@@ -59,6 +59,11 @@ void check(Func out, int line, std::vector<TailStrategy> tails) {
 }
 
 int main(int argc, char **argv) {
+    if (get_jit_target_from_environment().arch == Target::WebAssembly) {
+        printf("Skipping test for WebAssembly as the wasm JIT cannot support set_custom_allocator.\n");
+        return 0;
+    }
+
     // Test random compositions of tail strategies in simple
     // producer-consumer pipelines. The bounds being tight sometimes
     // depends on the simplifier being able to cancel out things.
