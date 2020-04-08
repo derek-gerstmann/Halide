@@ -17,17 +17,44 @@ void my_free(void *user_context, void *ptr) {
 }
 
 void check(Func out, int line, std::vector<TailStrategy> tails) {
+    bool has_round_up =
+        std::find(tails.begin(), tails.end(), TailStrategy::RoundUp) != tails.end();
+    bool has_shift_inwards =
+        std::find(tails.begin(), tails.end(), TailStrategy::ShiftInwards) != tails.end();
+
+    std::vector<int> sizes_to_try;
+
+    // A size that's a multiple of all the splits should always be
+    // exact
+    sizes_to_try.push_back(1024);
+
+    // Sizes larger than any of the splits should be fine if we don't
+    // have any roundups. The largest split we have is 128
+    if (!has_round_up) {
+        sizes_to_try.push_back(130);
+    }
+
+    // Tiny sizes are fine if we only have GuardWithIf
+    if (!has_round_up && !has_shift_inwards) {
+        sizes_to_try.push_back(3);
+    }
+
     out.set_custom_allocator(my_malloc, my_free);
-    largest_allocation = 0;
-    out.realize(1024);
-    if (largest_allocation > 1025 * 4) {
-        std::cerr << "Failure on line " << line << "\n"
-                  << "with tail strategies: ";
-        for (auto t : tails) {
-            std::cerr << t << " ";
+
+    for (int s : sizes_to_try) {
+        largest_allocation = 0;
+        out.realize(s);
+        size_t expected = (s + 1) * 4;
+        if (largest_allocation > expected) {
+            std::cerr << "Failure on line " << line << "\n"
+                      << "with tail strategies: ";
+            for (auto t : tails) {
+                std::cerr << t << " ";
+            }
+            std::cerr << "\n allocation of " << largest_allocation
+                      << " bytes is too large. Expected " << expected << "\n";
+            abort();
         }
-        std::cerr << "\n allocation of " << largest_allocation << " bytes is too large\n";
-        abort();
     }
 }
 
