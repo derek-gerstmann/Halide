@@ -1,5 +1,6 @@
-#include "internal/memory_arena.h"
 #include "common.h"
+
+#include "internal/memory_arena.h"
 
 using namespace Halide::Runtime::Internal;
 

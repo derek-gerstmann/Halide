@@ -71,7 +71,7 @@ private:
 };
 
 PointerTable::PointerTable(void *user_context, size_t initial_capacity, const SystemMemoryAllocatorFns &sma)
-    :  allocator(sma) {
+    : allocator(sma) {
     halide_abort_if_false(user_context, allocator.allocate != nullptr);
     halide_abort_if_false(user_context, allocator.deallocate != nullptr);
     if (initial_capacity) { reserve(user_context, initial_capacity); }

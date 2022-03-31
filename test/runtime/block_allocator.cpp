@@ -1,5 +1,6 @@
-#include "internal/block_allocator.h"
 #include "common.h"
+
+#include "internal/block_allocator.h"
 #include "internal/pointer_table.h"
 
 using namespace Halide::Runtime::Internal;

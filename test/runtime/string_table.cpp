@@ -1,5 +1,6 @@
-#include "internal/string_table.h"
 #include "common.h"
+
+#include "internal/string_table.h"
 
 using namespace Halide::Runtime::Internal;
 

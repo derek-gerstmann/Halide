@@ -88,7 +88,7 @@ private:
 };
 
 BlockStorage::BlockStorage(void *user_context, const Config &cfg, const SystemMemoryAllocatorFns &sma)
-    :  config(cfg), allocator(sma) {
+    : config(cfg), allocator(sma) {
     halide_abort_if_false(user_context, config.entry_size != 0);
     halide_abort_if_false(user_context, allocator.allocate != nullptr);
     halide_abort_if_false(user_context, allocator.deallocate != nullptr);

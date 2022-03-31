@@ -1,5 +1,6 @@
-#include "internal/linked_list.h"
 #include "common.h"
+
+#include "internal/linked_list.h"
 
 using namespace Halide::Runtime::Internal;
 

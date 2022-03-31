@@ -1,5 +1,6 @@
-#include "internal/block_storage.h"
 #include "common.h"
+
+#include "internal/block_storage.h"
 
 using namespace Halide::Runtime::Internal;
 

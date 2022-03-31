@@ -2,6 +2,7 @@
 #define HALIDE_RUNTIME_VULKAN_COMPILER_H
 
 #include "vulkan_internal.h"
+#include "vulkan_memory.h"
 
 // --------------------------------------------------------------------------
 

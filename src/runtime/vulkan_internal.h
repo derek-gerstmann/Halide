@@ -24,7 +24,6 @@ namespace Vulkan {
 // --------------------------------------------------------------------------
 // Memory
 // --------------------------------------------------------------------------
-typedef halide_vulkan_memory_allocator vk_allocator;
 class VulkanMemoryAllocator;
 WEAK void *vk_host_malloc(void *user_context, size_t size, size_t alignment, VkSystemAllocationScope scope, const VkAllocationCallbacks *callbacks = nullptr);
 WEAK void vk_host_free(void *user_context, void *ptr, const VkAllocationCallbacks *callbacks = nullptr);

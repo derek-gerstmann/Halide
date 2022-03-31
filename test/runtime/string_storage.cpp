@@ -1,5 +1,6 @@
-#include "internal/string_storage.h"
 #include "common.h"
+
+#include "internal/string_storage.h"
 
 using namespace Halide::Runtime::Internal;
 

@@ -160,6 +160,8 @@ WEAK int halide_vulkan_device_sync(void *user_context, halide_buffer_t *) {
     uint64_t t_before = halide_current_time_ns(user_context);
 #endif
 
+    vkQueueWaitIdle(ctx.queue);
+
 #ifdef DEBUG_RUNTIME
     uint64_t t_after = halide_current_time_ns(user_context);
     debug(user_context) << "    Time: " << (t_after - t_before) / 1.0e6 << " ms\n";
@@ -754,7 +756,7 @@ WEAK VkResult vk_create_descriptor_set_layout(void *user_context,
         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,  // descriptor type
         1,                                  // descriptor count
         VK_SHADER_STAGE_COMPUTE_BIT,        // stage flags
-        nullptr                                   // immutable samplers
+        nullptr                             // immutable samplers
     };
     layout_bindings.append(user_context, &scalar_uniform_layout);
 
@@ -824,6 +826,249 @@ WEAK VkResult vk_create_pipeline_layout(void *user_context,
     return VK_SUCCESS;
 }
 
+WEAK VkResult vk_create_compute_pipeline(void *user_context,
+                                         VkDevice device,
+                                         const VkAllocationCallbacks *alloc_callbacks,
+                                         const char *entry_name,
+                                         VkShaderModule shader_module,
+                                         VkPipelineLayout pipeline_layout,
+                                         VkPipeline *compute_pipeline) {
+
+    VkComputePipelineCreateInfo compute_pipeline_info =
+        {
+            VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,  // structure type
+            nullptr,                                         // pointer to a structure extending this
+            0,                                               // flags
+            // VkPipelineShaderStageCreatInfo
+            {
+                VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,  // structure type
+                nullptr,                                              //pointer to a structure extending this
+                0,                                                    // flags
+                VK_SHADER_STAGE_COMPUTE_BIT,                          // compute stage shader
+                shader_module,                                        // shader module
+                entry_name,                                           // entry point name
+                nullptr                                               // pointer to VkSpecializationInfo struct
+            },
+            pipeline_layout,  // pipeline layout
+            0,                // base pipeline handle for derived pipeline
+            0                 // base pipeline index for derived pipeline
+        };
+
+    VkResult result = vkCreateComputePipelines(device, 0, 1, &compute_pipeline_info, alloc_callbacks, compute_pipeline);
+    if (result != VK_SUCCESS) {
+        debug(user_context) << "Vulkan: Failed to create compute pipeline! vkCreateComputePipelines returned " << vk_get_error_name(result) << "\n";
+        return result;
+    }
+
+    return VK_SUCCESS;
+}
+
+WEAK VkResult vk_create_descriptor_pool(void *user_context,
+                                        VkDevice device,
+                                        const VkAllocationCallbacks *alloc_callbacks,
+                                        uint32_t storage_buffer_count,
+                                        VkDescriptorPool *descriptor_pool) {
+
+    static const uint32_t uniform_buffer_count = 1;  // all scalar args are packed into one uniform buffer
+
+    VkDescriptorPoolSize descriptor_pool_sizes[2] = {
+        {
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,  // descriptor type
+            uniform_buffer_count                // how many
+        },
+        {
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,  // descriptor type
+            storage_buffer_count                // how many
+        }};
+
+    uint32_t descriptor_set_count = (uniform_buffer_count + storage_buffer_count);
+    VkDescriptorPoolCreateInfo descriptor_pool_info =
+        {
+            VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,  // struct type
+            nullptr,                                        // point to struct extending this
+            0,                                              // flags
+            descriptor_set_count,                           // max number of sets that can be allocated TODO:should this be 1?
+            2,                                              // pool size count
+            descriptor_pool_sizes                           // ptr to descriptr pool sizes
+        };
+
+    VkResult result = vkCreateDescriptorPool(device, &descriptor_pool_info, alloc_callbacks, descriptor_pool);
+    if (result != VK_SUCCESS) {
+        debug(user_context) << "Vulkan: Failed to create descriptor pool! vkCreateDescriptorPool returned " << vk_get_error_name(result) << "\n";
+        return result;
+    }
+    return VK_SUCCESS;
+}
+
+WEAK VkResult vk_create_descriptor_set(void *user_context,
+                                       VkDevice device,
+                                       VkDescriptorSetLayout descriptor_set_layout,
+                                       VkDescriptorPool descriptor_pool,
+                                       VkDescriptorSet *descriptor_set) {
+
+    VkDescriptorSetAllocateInfo descriptor_set_info =
+        {
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,  // struct type
+            nullptr,                                         // pointer to struct extending this
+            descriptor_pool,                                 // pool from which to allocate sets
+            1,                                               // number of descriptor sets
+            &descriptor_set_layout                           // pointer to array of descriptor set layouts
+        };
+
+    VkResult result = vkAllocateDescriptorSets(device, &descriptor_set_info, descriptor_set);
+    if (result != VK_SUCCESS) {
+        debug(user_context) << "vkAllocateDescriptorSets returned " << vk_get_error_name(result) << "\n";
+        return result;
+    }
+
+    return VK_SUCCESS;
+}
+
+WEAK VkResult vk_update_descriptor_set(void *user_context,
+                                       VkDevice device,
+                                       const VkAllocationCallbacks *alloc_callbacks,
+                                       VkBuffer scalar_args_buffer,
+                                       size_t storage_buffer_count,
+                                       size_t arg_sizes[],
+                                       void *args[],
+                                       int8_t arg_is_buffer[],
+                                       VkDescriptorSet descriptor_set) {
+
+    static const int uniform_buffer_count = 1;  // scalar args are always packed into one uniform buffer
+
+    BlockStorage::Config dbi_config;
+    dbi_config.minimum_capacity = storage_buffer_count + uniform_buffer_count;
+    dbi_config.entry_size = sizeof(VkDescriptorBufferInfo);
+    BlockStorage descriptor_buffer_info(user_context, dbi_config);
+
+    BlockStorage::Config wds_config;
+    wds_config.minimum_capacity = storage_buffer_count + uniform_buffer_count;
+    wds_config.entry_size = sizeof(VkWriteDescriptorSet);
+    BlockStorage write_descriptor_set(user_context, wds_config);
+
+    // First binding will be the scalar params buffer
+    VkDescriptorBufferInfo scalar_args_descriptor_buffer_info = {
+        scalar_args_buffer,  // the buffer
+        0,                   // offset
+        VK_WHOLE_SIZE        // range
+    };
+    descriptor_buffer_info.append(user_context, &scalar_args_descriptor_buffer_info);
+    VkDescriptorBufferInfo *scalar_args_entry = (VkDescriptorBufferInfo *)descriptor_buffer_info.back();
+
+    VkWriteDescriptorSet scalar_args_write_descriptor_set = {
+        VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,  // struct type
+        nullptr,                                 // pointer to struct extending this
+        descriptor_set,                          // descriptor set to update
+        0,                                       // binding slot
+        0,                                       // array elem
+        1,                                       // num to update
+        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,       // descriptor type
+        nullptr,                                 // for images
+        scalar_args_entry,                       // info for buffer
+        nullptr                                  // for texel buffers
+    };
+    write_descriptor_set.append(user_context, &scalar_args_write_descriptor_set);
+
+    // Add all the other device buffers
+    for (size_t i = 0; arg_sizes[i] > 0; i++) {
+        if (arg_is_buffer[i]) {
+
+            // get the allocated region for the buffer
+            MemoryRegion *device_region = reinterpret_cast<MemoryRegion *>(((halide_buffer_t *)args[i])->device);
+
+            // retrieve the buffer from the region
+            VkBuffer *device_buffer = reinterpret_cast<VkBuffer *>(device_region->handle);
+            if (device_buffer == nullptr) {
+                error(user_context) << "Vulkan: Failed to retrieve buffer for device memory!\n";
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
+
+            VkDescriptorBufferInfo device_buffer_info = {
+                *device_buffer,  // the buffer
+                0,               // offset
+                VK_WHOLE_SIZE    // range
+            };
+            descriptor_buffer_info.append(user_context, &device_buffer_info);
+            VkDescriptorBufferInfo *device_buffer_entry = (VkDescriptorBufferInfo *)descriptor_buffer_info.back();
+
+            VkWriteDescriptorSet scalar_args_write_descriptor_set = {
+                VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,  // struct type
+                nullptr,                                 // pointer to struct extending this
+                descriptor_set,                          // descriptor set to update
+                (uint32_t)write_descriptor_set.size(),   // binding slot
+                0,                                       // array elem
+                1,                                       // num to update
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,       // descriptor type
+                nullptr,                                 // for images
+                device_buffer_entry,                     // info for buffer
+                nullptr                                  // for texel buffers
+            };
+            write_descriptor_set.append(user_context, &scalar_args_write_descriptor_set);
+        }
+    }
+
+    // issue the update call to populate the descriptor set
+    vkUpdateDescriptorSets(device, (uint32_t)write_descriptor_set.size(), (const VkWriteDescriptorSet *)write_descriptor_set.data(), 0, nullptr);
+    return VK_SUCCESS;
+}
+
+WEAK VkResult vk_fill_command_buffer_with_dispatch_call(void *user_context,
+                                                        VkDevice device,
+                                                        VkCommandBuffer command_buffer,
+                                                        VkPipeline compute_pipeline,
+                                                        VkPipelineLayout pipeline_layout,
+                                                        VkDescriptorSet descriptor_set,
+                                                        int blocksX, int blocksY, int blocksZ) {
+
+    VkCommandBufferBeginInfo command_buffer_begin_info = {
+        VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,  // struct type
+        nullptr,                                      // pointer to struct extending this
+        VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,  // flags
+        nullptr                                       // pointer to parent command buffer
+    };
+
+    VkResult result = vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
+    if (result != VK_SUCCESS) {
+        debug(user_context) << "vkBeginCommandBuffer returned " << vk_get_error_name(result) << "\n";
+        return result;
+    }
+
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, compute_pipeline);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout,
+                            0, 1, &descriptor_set, 0, nullptr);
+    vkCmdDispatch(command_buffer, blocksX, blocksY, blocksZ);  // TODO: make sure this is right!
+
+    result = vkEndCommandBuffer(command_buffer);
+    if (result != VK_SUCCESS) {
+        debug(user_context) << "vkEndCommandBuffer returned " << vk_get_error_name(result) << "\n";
+        return result;
+    }
+
+    return VK_SUCCESS;
+}
+
+WEAK VkResult vk_submit_command_buffer(void *user_context, VkQueue queue, VkCommandBuffer command_buffer) {
+    VkSubmitInfo submit_info =
+        {
+            VK_STRUCTURE_TYPE_SUBMIT_INFO,  // struct type
+            nullptr,                        // pointer to struct extending this
+            0,                              // wait semaphore count
+            nullptr,                        // semaphores
+            nullptr,                        // pipeline stages where semaphore waits occur
+            1,                              // how many command buffers to execute
+            &command_buffer,                // the command buffers
+            0,                              // number of semaphores to signal
+            nullptr                         // the semaphores to signal
+        };
+
+    VkResult result = vkQueueSubmit(queue, 1, &submit_info, 0);
+    if (result != VK_SUCCESS) {
+        debug(user_context) << "vkQueueSubmit returned " << vk_get_error_name(result) << "\n";
+        return result;
+    }
+    return VK_SUCCESS;
+}
+
 WEAK int halide_vulkan_run(void *user_context,
                            void *state_ptr,
                            const char *entry_name,
@@ -876,13 +1121,12 @@ WEAK int halide_vulkan_run(void *user_context,
     VkDescriptorSetLayout descriptor_set_layout;
     VkResult result = vk_create_descriptor_set_layout(user_context, ctx.device, arg_sizes, args, arg_is_buffer, &descriptor_set_layout);
     if (result != VK_SUCCESS) {
-        error(user_context) << "Vulkan: vk_create_descriptor_set_layout() failed! Unable to create shader module!\n";
+        error(user_context) << "Vulkan: vk_create_descriptor_set_layout() failed! Unable to create shader module! Error: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
     //// 1a. Create a buffer for the scalar parameters
-    // First allocate memory, then map it and copy params, then create a buffer
-    // and bind the allocation
+    // First allocate memory, then map it and copy params, then create a buffer and bind the allocation
     MemoryRegion *scalar_args_region = vk_create_scalar_uniform_buffer(user_context, ctx.allocator, arg_sizes, args, arg_is_buffer);
     if (scalar_args_region == nullptr) {
         error(user_context) << "Vulkan: vk_create_scalar_uniform_buffer() failed! Unable to create shader module!\n";
@@ -894,249 +1138,88 @@ WEAK int halide_vulkan_run(void *user_context,
         error(user_context) << "Vulkan: Failed to retrieve scalar args buffer for device memory!\n";
         return halide_error_code_internal_error;
     }
+
     ///// 2. Create a pipeline layout
     VkPipelineLayout pipeline_layout;
     result = vk_create_pipeline_layout(user_context, ctx.device, ctx.allocator->callbacks(), &descriptor_set_layout, &pipeline_layout);
     if (result != VK_SUCCESS) {
-        error(user_context) << "Vulkan: vk_create_pipeline_layout() failed! Unable to create shader module!\n";
+        error(user_context) << "Vulkan: vk_create_pipeline_layout() failed! Unable to create shader module! Error: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
     //// 3. Create a compute pipeline
     // Get the shader module
-
     VkShaderModule *shader_module = nullptr;
     bool found = compilation_cache.lookup(ctx.device, state_ptr, shader_module);
     halide_abort_if_false(user_context, found);
-    halide_abort_if_false(user_context, shader_module != nullptr);
-    VkComputePipelineCreateInfo compute_pipeline_info =
-        {
-            VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,  // structure type
-            nullptr,                                         // pointer to a structure extending this
-            0,                                               // flags
-            // VkPipelineShaderStageCreatInfo
-            {
-                VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,  // structure type
-                nullptr,                                              //pointer to a structure extending this
-                0,                                                    // flags
-                VK_SHADER_STAGE_COMPUTE_BIT,                          // compute stage shader
-                *shader_module,                                       // shader module
-                entry_name,                                           // entry point name
-                nullptr                                               // pointer to VkSpecializationInfo struct
-            },
-            pipeline_layout,  // pipeline layout
-            0,                // base pipeline handle for derived pipeline
-            0                 // base pipeline index for derived pipeline
-        };
+    if (shader_module == nullptr) {
+        error(user_context) << "Vulkan: Failed to locate shader module! Unable to proceed!\n";
+        return halide_error_code_internal_error;
+    }
 
-    VkPipeline pipeline;
-    result = vkCreateComputePipelines(ctx.device, 0, 1, &compute_pipeline_info, nullptr, &pipeline);
-
+    // Construct the pipeline
+    VkPipeline compute_pipeline;
+    result = vk_create_compute_pipeline(user_context, ctx.device, ctx.allocator->callbacks(), entry_name, *shader_module, pipeline_layout, &compute_pipeline);
     if (result != VK_SUCCESS) {
-        debug(user_context) << "vkCreateComputePipelines returned " << vk_get_error_name(result) << "\n";
+        error(user_context) << "Vulkan: vk_create_compute_pipeline() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
     //// 4. Create a descriptor set
-    VkDescriptorPoolSize descriptor_pool_sizes[2] = {
-        {
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,  // descriptor type
-            1                                   // how many
-        },
-        {
-            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,  // descriptor type
-            num_bindings - 1                    // how many
-        }};
-
-    VkDescriptorPoolCreateInfo descriptor_pool_info =
-        {
-            VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,  // struct type
-            nullptr,                                        // point to struct extending this
-            0,                                              // flags
-            num_bindings,                                   // max numbewr of sets that can be allocated TODO:should this be 1?
-            2,                                              // pool size count
-            descriptor_pool_sizes                           // ptr to descriptr pool sizes
-        };
-
+    // Construct a descriptor pool
     VkDescriptorPool descriptor_pool;
-    result = vkCreateDescriptorPool(ctx.device, &descriptor_pool_info, nullptr, &descriptor_pool);
-
+    uint32_t storage_buffer_count = num_bindings - 1;
+    result = vk_create_descriptor_pool(user_context, ctx.device, ctx.allocator->callbacks(), storage_buffer_count, &descriptor_pool);
     if (result != VK_SUCCESS) {
-        debug(user_context) << "vkCreateDescriptorPool returned " << vk_get_error_name(result) << "\n";
+        error(user_context) << "Vulkan: vk_create_descriptor_pool() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
-    VkDescriptorSetAllocateInfo descriptor_set_info =
-        {
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,  // struct type
-            nullptr,                                         // pointer to struct extending this
-            descriptor_pool,                                 // pool from which to allocate sets
-            1,                                               // number of descriptor sets
-            &descriptor_set_layout                           // pointer to array of descriptor set layouts
-        };
-
+    // Create the descriptor set
     VkDescriptorSet descriptor_set;
-    result = vkAllocateDescriptorSets(ctx.device, &descriptor_set_info, &descriptor_set);
-
+    result = vk_create_descriptor_set(user_context, ctx.device, descriptor_set_layout, descriptor_pool, &descriptor_set);
     if (result != VK_SUCCESS) {
-        debug(user_context) << "vkAllocateDescriptorSets returned " << vk_get_error_name(result) << "\n";
+        error(user_context) << "Vulkan: vk_create_descriptor_pool() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
     //// 5. Set bindings for buffers in the descriptor set
-    const size_t HALIDE_MAX_VK_BINDINGS = 64;
-    VkDescriptorBufferInfo descriptor_buffer_info[HALIDE_MAX_VK_BINDINGS];
-    VkWriteDescriptorSet write_descriptor_set[HALIDE_MAX_VK_BINDINGS];
-
-    // First binding will be the scalar params buffer
-    descriptor_buffer_info[0] =
-        {
-            *scalar_args_buffer,  // the buffer
-            0,                    // offset
-            VK_WHOLE_SIZE         // range
-        };
-    write_descriptor_set[0] =
-        {
-            VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,  // struct type
-            nullptr,                                 // pointer to struct extending this
-            descriptor_set,                          // descriptor set to update
-            0,                                       // binding
-            0,                                       // array elem
-            1,                                       // num to update
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,       // descriptor type
-            nullptr,                                 // for images
-            &(descriptor_buffer_info[0]),            // info for buffer
-            nullptr                                  // for texel buffers
-        };
-    uint32_t num_bound = 1;
-    for (size_t i = 0; arg_sizes[i] > 0; i++) {
-        if (arg_is_buffer[i]) {
-            halide_debug_assert(user_context, num_bound < HALIDE_MAX_VK_BINDINGS);
-
-            // get the allocated region for the buffer
-            MemoryRegion *device_region = reinterpret_cast<MemoryRegion *>(((halide_buffer_t *)args[i])->device);
-
-            // retrieve the buffer from the region
-            VkBuffer *device_buffer = reinterpret_cast<VkBuffer *>(device_region->handle);
-            if (device_buffer == nullptr) {
-                error(user_context) << "Vulkan: Failed to retrieve buffer for device memory!\n";
-                return halide_error_code_internal_error;
-            }
-
-            descriptor_buffer_info[num_bound] =
-                {
-                    *device_buffer,  // the buffer
-                    0,               // offset
-                    VK_WHOLE_SIZE    // range
-                };
-            write_descriptor_set[num_bound] =
-                {
-                    VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,  // struct type
-                    nullptr,                                 // pointer to struct extending this
-                    descriptor_set,                          // descriptor set to update
-                    num_bound,                               // binding
-                    0,                                       // array elem
-                    1,                                       // num to update
-                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,       // descriptor type
-                    nullptr,                                 // for images
-                    &(descriptor_buffer_info[num_bound]),    // info for buffer
-                    nullptr                                  // for texel buffers
-                };
-            num_bound++;
-        }
+    result = vk_update_descriptor_set(user_context, ctx.device, ctx.allocator->callbacks(), *scalar_args_buffer, storage_buffer_count, arg_sizes, args, arg_is_buffer, descriptor_set);
+    if (result != VK_SUCCESS) {
+        debug(user_context) << "Vulkan: vk_update_descriptor_set() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
+        return result;
     }
-
-    halide_debug_assert(user_context, num_bound == num_bindings);
-    vkUpdateDescriptorSets(ctx.device, num_bindings, write_descriptor_set, 0, nullptr);
 
     //// 6. Create a command pool
     // TODO: This should really be part of the acquire_context API
-    // VkCommandPoolCreateInfo command_pool_info =
-    //     {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,    // struct type
-    //      nullptr,   // pointer to struct extending this
-    //      0,     // flags.  may consider VK_COMMAND_POOL_CREATE_TRANSIENT_BIT
-    //      ctx.queue_family_index     // queue family index corresponding to the compute command queue
-    //     };
     VkCommandPool command_pool;
-    // result = vkCreateCommandPool(ctx.device, &command_pool_info, ctx.allocation_callbacks(), &command_pool);
-    result = vk_create_command_pool(ctx.device, ctx.queue_family_index, ctx.allocation_callbacks(), &command_pool);
-
+    result = vk_create_command_pool(ctx.device, ctx.queue_family_index, ctx.allocator->callbacks(), &command_pool);
     if (result != VK_SUCCESS) {
-        debug(user_context) << "vkCreateCommandPool returned " << vk_get_error_name(result) << "\n";
+        debug(user_context) << "Vulkan: vk_create_descriptor_pool() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
     //// 7. Create a command buffer from the command pool
-    // VkCommandBufferAllocateInfo command_buffer_info =
-    //     {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,    // struct type
-    //      nullptr,    // pointer to struct extending this
-    //      command_pool,  // command pool for allocation
-    //      VK_COMMAND_BUFFER_LEVEL_PRIMARY,   // command buffer level
-    //      1  // number to allocate
-    //     };
-
     VkCommandBuffer command_buffer;
-    //result = vkAllocateCommandBuffers(ctx.device, &command_buffer_info, &command_buffer);
     result = vk_create_command_buffer(ctx.device, command_pool, &command_buffer);
-
     if (result != VK_SUCCESS) {
-        debug(user_context) << "vkAllocateCommandBuffer returned " << vk_get_error_name(result) << "\n";
+        debug(user_context) << "Vulkan: vk_create_command_buffer() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
     //// 8. Begin the command buffer
-    VkCommandBufferBeginInfo command_buffer_begin_info =
-        {
-            VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,  // struct type
-            nullptr,                                      // pointer to struct extending this
-            VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,  // flags
-            nullptr                                       // pointer to parent command buffer
-        };
-
-    result = vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
-
+    result = vk_fill_command_buffer_with_dispatch_call(user_context,
+                                                       ctx.device, command_buffer, compute_pipeline, pipeline_layout, descriptor_set,
+                                                       blocksX, blocksY, blocksZ);
     if (result != VK_SUCCESS) {
-        debug(user_context) << "vkBeginCommandBuffer returned " << vk_get_error_name(result) << "\n";
-        return result;
-    }
-
-    //// 9. Bind the compute pipeline from #3
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-
-    //// 10. Bind the descriptor set
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout,
-                            0, 1, &descriptor_set, 0, nullptr);
-
-    //// 11. Add a dispatch to the command buffer
-    // TODO: Is this right?
-    vkCmdDispatch(command_buffer, blocksX, blocksY, blocksZ);
-
-    //// 12. End the command buffer
-    result = vkEndCommandBuffer(command_buffer);
-
-    if (result != VK_SUCCESS) {
-        debug(user_context) << "vkEndCommandBuffer returned " << vk_get_error_name(result) << "\n";
+        debug(user_context) << "Vulkan: vk_fill_command_buffer_with_dispatch_call() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
     //// 13. Submit the command buffer to our command queue
-    VkSubmitInfo submit_info =
-        {
-            VK_STRUCTURE_TYPE_SUBMIT_INFO,  // struct type
-            nullptr,                        // pointer to struct extending this
-            0,                              // wait semaphore count
-            nullptr,                        // semaphores
-            nullptr,                        // pipeline stages where semaphore waits occur
-            1,                              // how many command buffers to execute
-            &command_buffer,                // the command buffers
-            0,                              // number of semaphores to signal
-            nullptr                         // the semaphores to signal
-        };
-
-    result = vkQueueSubmit(ctx.queue, 1, &submit_info, 0);
-
+    result = vk_submit_command_buffer(user_context, ctx.queue, command_buffer);
     if (result != VK_SUCCESS) {
-        debug(user_context) << "vkQueueSubmit returned " << vk_get_error_name(result) << "\n";
+        debug(user_context) << "Vulkan: vk_submit_command_buffer() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
@@ -1149,6 +1232,12 @@ WEAK int halide_vulkan_run(void *user_context,
 
     // Release the uniform buffer for the scalar args
     vk_destroy_scalar_uniform_buffer(user_context, ctx.allocator, scalar_args_region);
+
+    vkDestroyDescriptorSetLayout(ctx.device, descriptor_set_layout, ctx.allocator->callbacks());
+    vkDestroyDescriptorPool(ctx.device, descriptor_pool, ctx.allocator->callbacks());
+    vkDestroyPipelineLayout(ctx.device, pipeline_layout, ctx.allocator->callbacks());
+    vkDestroyPipeline(ctx.device, compute_pipeline, ctx.allocator->callbacks());
+    vkDestroyCommandPool(ctx.device, command_pool, ctx.allocator->callbacks());
 
 #ifdef DEBUG_RUNTIME
     uint64_t t_after = halide_current_time_ns(user_context);

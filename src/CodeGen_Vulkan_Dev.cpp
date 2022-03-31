@@ -139,7 +139,7 @@ protected:
         uint32_t current_function_id;
 
         // Top-level function for adding kernels
-        void add_kernel(const Stmt& s, const std::string &name, const std::vector<DeviceArgument> &args);
+        void add_kernel(const Stmt &s, const std::string &name, const std::vector<DeviceArgument> &args);
 
         // Function for allocating variables in function scope, with optional initializer.
         // These will appear at the beginning of the function, as required by SPIR-V
@@ -1029,7 +1029,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::add_allocation(uint32_t result_type_id,
     }
 }
 
-void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(const Stmt& s,
+void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(const Stmt &s,
                                                   const std::string &name,
                                                   const std::vector<DeviceArgument> &args) {
     debug(2) << "Adding Vulkan kernel " << name << "\n";
@@ -1097,7 +1097,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(const Stmt& s,
     uint32_t param_pack_ptr_type_id = next_id++;
     uint32_t param_pack_id = next_id++;
     scalar_types.push_back(param_pack_type_id);
-    for (const auto & arg : args) {
+    for (const auto &arg : args) {
         if (!arg.is_buffer) {
             // record the type for later constructing the params struct type
             scalar_types.push_back(map_type(arg.type));
@@ -1122,7 +1122,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(const Stmt& s,
 
     uint32_t binding_counter = 1;
     uint32_t scalar_index = 0;
-    for (const auto & arg : args) {
+    for (const auto &arg : args) {
         uint32_t param_id = next_id++;
         if (arg.is_buffer) {
             uint32_t element_type = map_type(arg.type);
@@ -1176,7 +1176,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(const Stmt& s,
                      workgroup_size[0], workgroup_size[1], workgroup_size[2]});
 
     // Pop scope
-    for (const auto& arg : args) {
+    for (const auto &arg : args) {
         symbol_table.pop(arg.name);
     }
 

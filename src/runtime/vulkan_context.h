@@ -4,8 +4,10 @@
 #include "printer.h"
 #include "runtime_internal.h"
 #include "scoped_spin_lock.h"
+
 #include "vulkan_extensions.h"
 #include "vulkan_internal.h"
+#include "vulkan_memory.h"
 
 // --------------------------------------------------------------------------
 
