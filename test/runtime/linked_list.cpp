@@ -1,5 +1,5 @@
-#include "common.h"
 #include "internal/linked_list.h"
+#include "common.h"
 
 using namespace Halide::Runtime::Internal;
 
@@ -10,8 +10,8 @@ struct TestStruct {
 };
 
 template<typename T>
-T read_as(const LinkedList::EntryType* entry_ptr) {
-    const T* ptr = static_cast<const T*>(entry_ptr->value);
+T read_as(const LinkedList::EntryType *entry_ptr) {
+    const T *ptr = static_cast<const T *>(entry_ptr->value);
     return *ptr;
 }
 

@@ -54,12 +54,12 @@ extern void halide_vulkan_finalize_kernels(void *user_context, void *state_ptr);
 // TODO: describe memory type index
 // TODO: describe queue family index
 struct halide_vulkan_memory_allocator;
-extern int halide_vulkan_acquire_context(void *user_context, 
+extern int halide_vulkan_acquire_context(void *user_context,
                                          struct halide_vulkan_memory_allocator **allocator,
                                          struct VkInstance_T **instance,
                                          struct VkDevice_T **device, struct VkQueue_T **queue,
-                                         struct VkPhysicalDevice_T **physical_device, 
-                                         uint32_t *queue_family_index, 
+                                         struct VkPhysicalDevice_T **physical_device,
+                                         uint32_t *queue_family_index,
                                          bool create = true);
 
 extern int halide_vulkan_release_context(void *user_context, struct VkInstance_T *instance, struct VkDevice_T *device, struct VkQueue_T *queue);
@@ -67,11 +67,11 @@ extern int halide_vulkan_release_context(void *user_context, struct VkInstance_T
 // --
 
 // Override the default allocation callbacks (default uses Vulkan runtime implementation)
-extern void halide_vulkan_set_allocation_callbacks(const struct VkAllocationCallbacks* callbacks);
+extern void halide_vulkan_set_allocation_callbacks(const struct VkAllocationCallbacks *callbacks);
 
-// Access the current allocation callbacks 
+// Access the current allocation callbacks
 // -- may return nullptr ... which indicates the default Vulkan runtime implementation is being used)
-extern const struct VkAllocationCallbacks* halide_vulkan_get_allocation_callbacks(void *user_context);
+extern const struct VkAllocationCallbacks *halide_vulkan_get_allocation_callbacks(void *user_context);
 
 // Access methods to assign/retrieve required layer names for the context
 extern void halide_vulkan_set_layer_names(const char *n);

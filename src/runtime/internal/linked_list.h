@@ -16,13 +16,13 @@ public:
     LinkedList &operator=(const LinkedList &) = delete;
 
     // Default initial capacity
-    static constexpr uint32_t default_capacity = uint32_t(32); // smallish
+    static constexpr uint32_t default_capacity = uint32_t(32);  // smallish
 
     // List entry
     struct EntryType {
-        void* value = nullptr;
-        EntryType *prev_ptr= nullptr;
-        EntryType *next_ptr= nullptr;
+        void *value = nullptr;
+        EntryType *prev_ptr = nullptr;
+        EntryType *next_ptr = nullptr;
     };
 
     LinkedList(void *user_context, uint32_t entry_size, uint32_t capacity = default_capacity,
@@ -39,19 +39,19 @@ public:
     const EntryType *back() const;
 
     EntryType *prepend(void *user_context);
-    EntryType *prepend(void *user_context, const void* value);
+    EntryType *prepend(void *user_context, const void *value);
 
     EntryType *append(void *user_context);
-    EntryType *append(void *user_context, const void* value);
+    EntryType *append(void *user_context, const void *value);
 
     void pop_front(void *user_context);
     void pop_back(void *user_context);
 
     EntryType *insert_before(void *user_context, EntryType *entry_ptr);
-    EntryType *insert_before(void *user_context, EntryType *entry_ptr, const void* value);
+    EntryType *insert_before(void *user_context, EntryType *entry_ptr, const void *value);
 
     EntryType *insert_after(void *user_context, EntryType *entry_ptr);
-    EntryType *insert_after(void *user_context, EntryType *entry_ptr, const void* value);
+    EntryType *insert_after(void *user_context, EntryType *entry_ptr, const void *value);
 
     void remove(void *user_context, EntryType *entry_ptr);
     void clear(void *user_context);
@@ -64,8 +64,8 @@ public:
     static const SystemMemoryAllocatorFns &default_allocator();
 
 private:
-    EntryType* reserve(void* user_context);
-    void reclaim(void* user_context, EntryType* entry_ptr);
+    EntryType *reserve(void *user_context);
+    void reclaim(void *user_context, EntryType *entry_ptr);
 
     MemoryArena *link_arena = nullptr;
     MemoryArena *data_arena = nullptr;
@@ -100,8 +100,8 @@ void LinkedList::initialize(void *user_context, uint32_t entry_size, uint32_t ca
 
 void LinkedList::destroy(void *user_context) {
     clear(nullptr);
-    if(link_arena) { MemoryArena::destroy(nullptr, link_arena); }
-    if(data_arena) { MemoryArena::destroy(nullptr, data_arena); }
+    if (link_arena) { MemoryArena::destroy(nullptr, link_arena); }
+    if (data_arena) { MemoryArena::destroy(nullptr, data_arena); }
     link_arena = nullptr;
     data_arena = nullptr;
     front_ptr = nullptr;
@@ -158,14 +158,14 @@ LinkedList::append(void *user_context) {
 }
 
 typename LinkedList::EntryType *
-LinkedList::prepend(void *user_context, const void* value) {
+LinkedList::prepend(void *user_context, const void *value) {
     EntryType *entry_ptr = prepend(user_context);
     memcpy(entry_ptr->value, value, data_arena->current_config().entry_size);
     return entry_ptr;
 }
 
 typename LinkedList::EntryType *
-LinkedList::append(void *user_context, const void* value) {
+LinkedList::append(void *user_context, const void *value) {
     EntryType *entry_ptr = append(user_context);
     memcpy(entry_ptr->value, value, data_arena->current_config().entry_size);
     return entry_ptr;
@@ -274,14 +274,14 @@ LinkedList::insert_after(void *user_context, EntryType *entry_ptr) {
 }
 
 typename LinkedList::EntryType *
-LinkedList::insert_before(void *user_context, EntryType *entry_ptr, const void* value) {
+LinkedList::insert_before(void *user_context, EntryType *entry_ptr, const void *value) {
     EntryType *new_ptr = insert_before(user_context, entry_ptr);
     memcpy(new_ptr->value, value, data_arena->current_config().entry_size);
     return new_ptr;
 }
 
 typename LinkedList::EntryType *
-LinkedList::insert_after(void *user_context, EntryType *entry_ptr, const void* value) {
+LinkedList::insert_after(void *user_context, EntryType *entry_ptr, const void *value) {
     EntryType *new_ptr = insert_after(user_context, entry_ptr);
     memcpy(new_ptr->value, value, data_arena->current_config().entry_size);
     return new_ptr;
@@ -305,19 +305,18 @@ LinkedList::default_allocator() {
     return MemoryArena::default_allocator();
 }
 
-typename LinkedList::EntryType * 
-LinkedList::reserve(void* user_context) {
-    EntryType *entry_ptr = static_cast<EntryType*>(
-        link_arena->reserve(user_context, true)
-    );
+typename LinkedList::EntryType *
+LinkedList::reserve(void *user_context) {
+    EntryType *entry_ptr = static_cast<EntryType *>(
+        link_arena->reserve(user_context, true));
     entry_ptr->value = data_arena->reserve(user_context, true);
     entry_ptr->next_ptr = nullptr;
     entry_ptr->prev_ptr = nullptr;
     return entry_ptr;
 }
 
-void LinkedList::reclaim(void* user_context, EntryType* entry_ptr) {
-    void* value_ptr = entry_ptr->value;
+void LinkedList::reclaim(void *user_context, EntryType *entry_ptr) {
+    void *value_ptr = entry_ptr->value;
     entry_ptr->value = nullptr;
     entry_ptr->next_ptr = nullptr;
     entry_ptr->prev_ptr = nullptr;

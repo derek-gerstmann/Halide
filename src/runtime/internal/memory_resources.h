@@ -126,15 +126,15 @@ ALWAYS_INLINE size_t clamped_size(size_t value, size_t min_value, size_t max_val
 }
 
 // Offset the untyped pointer by the given number of bytes
-ALWAYS_INLINE const void* offset_address(const void* address, size_t byte_offset) {
+ALWAYS_INLINE const void *offset_address(const void *address, size_t byte_offset) {
     const uintptr_t base = reinterpret_cast<uintptr_t>(address);
-    return reinterpret_cast<const void*>(base + byte_offset);
+    return reinterpret_cast<const void *>(base + byte_offset);
 }
 
 // Offset the untyped pointer by the given number of bytes
-ALWAYS_INLINE void* offset_address(void* address, size_t byte_offset) {
+ALWAYS_INLINE void *offset_address(void *address, size_t byte_offset) {
     const uintptr_t base = reinterpret_cast<uintptr_t>(address);
-    return reinterpret_cast<void*>(base + byte_offset);
+    return reinterpret_cast<void *>(base + byte_offset);
 }
 
 // --

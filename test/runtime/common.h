@@ -1,13 +1,13 @@
 #include <cstdint>
 
 #include "HalideRuntime.h"
+#include "msan_stubs.cpp"
 #include "runtime_internal.h"
 #include "to_string.cpp"
-#include "msan_stubs.cpp"
 
 extern "C" {
 
-extern int printf(const char * format, ... );
+extern int printf(const char *format, ...);
 
 void halide_print(void *user_context, const char *str) {
     printf("%s", str);

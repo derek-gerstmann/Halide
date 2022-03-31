@@ -18,7 +18,7 @@ namespace Vulkan {
 
 // An Vulkan context/queue/synchronization lock defined in this module with weak linkage
 // Vulkan Memory allocator for host-device allocations
-halide_vulkan_memory_allocator* WEAK cached_allocator = nullptr;
+halide_vulkan_memory_allocator *WEAK cached_allocator = nullptr;
 VkInstance WEAK cached_instance = nullptr;
 VkDevice WEAK cached_device = nullptr;
 VkQueue WEAK cached_queue = nullptr;
@@ -33,28 +33,27 @@ class VulkanContext {
     void *user_context;
 
 public:
-    VulkanMemoryAllocator* allocator;
+    VulkanMemoryAllocator *allocator;
     VkInstance instance;
     VkDevice device;
     VkPhysicalDevice physical_device;
     VkQueue queue;
     uint32_t queue_family_index;  // used for operations requiring queue family
     VkResult error;
-    
+
     HALIDE_ALWAYS_INLINE VulkanContext(void *user_context)
         : user_context(user_context),
           allocator(nullptr),
-          instance(nullptr), 
-          device(nullptr), 
+          instance(nullptr),
+          device(nullptr),
           physical_device(nullptr),
           queue(nullptr),
           queue_family_index(0),
           error(VK_SUCCESS) {
 
-        int result = halide_vulkan_acquire_context(user_context, 
-            reinterpret_cast<halide_vulkan_memory_allocator**>(&allocator), 
-            &instance, &device, &queue, &physical_device, &queue_family_index
-        );
+        int result = halide_vulkan_acquire_context(user_context,
+                                                   reinterpret_cast<halide_vulkan_memory_allocator **>(&allocator),
+                                                   &instance, &device, &queue, &physical_device, &queue_family_index);
         halide_abort_if_false(user_context, result == 0);
         halide_abort_if_false(user_context, allocator != nullptr);
         halide_abort_if_false(user_context, instance != nullptr);
@@ -76,7 +75,7 @@ public:
 // --------------------------------------------------------------------------
 
 // Initializes the instance (used by the default vk_create_context)
-WEAK int vk_create_instance(void *user_context, const StringTable &requested_layers, VkInstance *instance, const VkAllocationCallbacks* alloc_callbacks) {
+WEAK int vk_create_instance(void *user_context, const StringTable &requested_layers, VkInstance *instance, const VkAllocationCallbacks *alloc_callbacks) {
     debug(user_context) << "    vk_create_instance (user_context: " << user_context << ")\n";
 
     StringTable required_instance_extensions;
@@ -200,7 +199,7 @@ WEAK int vk_select_device_for_context(void *user_context,
 }
 
 WEAK int vk_create_device(void *user_context, const StringTable &requested_layers, VkInstance *instance, VkDevice *device, VkQueue *queue,
-                          VkPhysicalDevice *physical_device, uint32_t *queue_family_index, const VkAllocationCallbacks* alloc_callbacks) {
+                          VkPhysicalDevice *physical_device, uint32_t *queue_family_index, const VkAllocationCallbacks *alloc_callbacks) {
 
     StringTable required_device_extensions;
     vk_get_required_device_extensions(user_context, required_device_extensions);
@@ -222,7 +221,7 @@ WEAK int vk_create_device(void *user_context, const StringTable &requested_layer
     // enable all available optional extensions
     debug(user_context) << "Vulkan: Found " << (uint32_t)optional_device_extensions.size() << " optional extensions for device!\n";
     for (int n = 0; n < (int)optional_device_extensions.size(); ++n) {
-        if(supported_device_extensions.contains(optional_device_extensions[n])) {
+        if (supported_device_extensions.contains(optional_device_extensions[n])) {
             debug(user_context) << "    optional extension: " << optional_device_extensions[n] << "\n";
             required_device_extensions.append(user_context, optional_device_extensions[n]);
         }
@@ -260,7 +259,7 @@ WEAK int vk_create_device(void *user_context, const StringTable &requested_layer
 }
 
 // Initializes the context (used by the default implementation of halide_acquire_context)
-WEAK int vk_create_context(void *user_context, VulkanMemoryAllocator **allocator, 
+WEAK int vk_create_context(void *user_context, VulkanMemoryAllocator **allocator,
                            VkInstance *instance, VkDevice *device, VkQueue *queue,
                            VkPhysicalDevice *physical_device, uint32_t *queue_family_index) {
 
@@ -273,7 +272,7 @@ WEAK int vk_create_context(void *user_context, VulkanMemoryAllocator **allocator
         debug(user_context) << "    layer: " << requested_layers[n] << "\n";
     }
 
-    const VkAllocationCallbacks* alloc_callbacks = halide_vulkan_get_allocation_callbacks(user_context);
+    const VkAllocationCallbacks *alloc_callbacks = halide_vulkan_get_allocation_callbacks(user_context);
     int status = vk_create_instance(user_context, requested_layers, instance, alloc_callbacks);
     if (status != halide_error_code_success) {
         return status;

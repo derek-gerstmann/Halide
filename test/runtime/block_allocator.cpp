@@ -1,6 +1,6 @@
+#include "internal/block_allocator.h"
 #include "common.h"
 #include "internal/pointer_table.h"
-#include "internal/block_allocator.h"
 
 using namespace Halide::Runtime::Internal;
 
@@ -11,10 +11,10 @@ size_t allocated_region_memory = 0;
 
 void allocate_block(void *user_context, MemoryBlock *block) {
     block->handle = native_system_malloc(user_context, block->size);
-        allocated_block_memory += block->size;
+    allocated_block_memory += block->size;
 
-    debug(user_context) << "Test : allocate_block ("  
-                        << "block=" << (void*)(block) << " "
+    debug(user_context) << "Test : allocate_block ("
+                        << "block=" << (void *)(block) << " "
                         << "block_size=" << int32_t(block->size) << " "
                         << "allocated_block_memory=" << int32_t(allocated_block_memory) << " "
                         << ") !\n";
@@ -24,8 +24,8 @@ void deallocate_block(void *user_context, MemoryBlock *block) {
     native_system_free(user_context, block->handle);
     allocated_block_memory -= block->size;
 
-    debug(user_context) << "Test : deallocate_block ("  
-                        << "block=" << (void*)(block) << " "
+    debug(user_context) << "Test : deallocate_block ("
+                        << "block=" << (void *)(block) << " "
                         << "block_size=" << int32_t(block->size) << " "
                         << "allocated_block_memory=" << int32_t(allocated_block_memory) << " "
                         << ") !\n";
@@ -35,8 +35,8 @@ void allocate_region(void *user_context, MemoryRegion *region) {
     region->handle = (void *)1;
     allocated_region_memory += region->size;
 
-    debug(user_context) << "Test : allocate_region ("  
-                        << "region=" << (void*)(region) << " "
+    debug(user_context) << "Test : allocate_region ("
+                        << "region=" << (void *)(region) << " "
                         << "region_size=" << int32_t(region->size) << " "
                         << "allocated_region_memory=" << int32_t(allocated_region_memory) << " "
                         << ") !\n";
@@ -46,9 +46,9 @@ void deallocate_region(void *user_context, MemoryRegion *region) {
     region->handle = (void *)0;
     allocated_region_memory -= region->size;
 
-    debug(user_context) << "Test : deallocate_region ("  
-                        << "region=" << (void*)(region) << " "
-                        << "region_size=" << int32_t(region->size) << " " 
+    debug(user_context) << "Test : deallocate_region ("
+                        << "region=" << (void *)(region) << " "
+                        << "region_size=" << int32_t(region->size) << " "
                         << "allocated_region_memory=" << int32_t(allocated_region_memory) << " "
                         << ") !\n";
 }
@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
         }
 
         for (size_t n = 0; n < pointers.size(); ++n) {
-            MemoryRegion* region = static_cast<MemoryRegion*>(pointers[n]);
+            MemoryRegion *region = static_cast<MemoryRegion *>(pointers[n]);
             instance->reclaim(user_context, region);
         }
         halide_abort_if_false(user_context, allocated_region_memory == 0);

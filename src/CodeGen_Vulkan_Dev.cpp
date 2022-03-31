@@ -139,7 +139,7 @@ protected:
         uint32_t current_function_id;
 
         // Top-level function for adding kernels
-        void add_kernel(Stmt s, const std::string &name, const std::vector<DeviceArgument> &args);
+        void add_kernel(const Stmt& s, const std::string &name, const std::vector<DeviceArgument> &args);
 
         // Function for allocating variables in function scope, with optional initializer.
         // These will appear at the beginning of the function, as required by SPIR-V
@@ -1029,7 +1029,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::add_allocation(uint32_t result_type_id,
     }
 }
 
-void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(Stmt s,
+void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(const Stmt& s,
                                                   const std::string &name,
                                                   const std::vector<DeviceArgument> &args) {
     debug(2) << "Adding Vulkan kernel " << name << "\n";
@@ -1066,7 +1066,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(Stmt s,
 
     // TODO: only add the SIMT intrinsics used
     auto intrinsics = {"WorkgroupId", "LocalInvocationId"};
-    for (auto intrinsic : intrinsics) {
+    for (const auto *intrinsic : intrinsics) {
         uint32_t intrinsic_id = next_id++;
         uint32_t intrinsic_loaded_id = next_id++;
         // The builtins are pointers to vec3
@@ -1097,14 +1097,14 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(Stmt s,
     uint32_t param_pack_ptr_type_id = next_id++;
     uint32_t param_pack_id = next_id++;
     scalar_types.push_back(param_pack_type_id);
-    for (size_t i = 0; i < args.size(); i++) {
-        if (!args[i].is_buffer) {
+    for (const auto & arg : args) {
+        if (!arg.is_buffer) {
             // record the type for later constructing the params struct type
-            scalar_types.push_back(map_type(args[i].type));
+            scalar_types.push_back(map_type(arg.type));
 
             // Add a decoration describing the offset
             add_instruction(spir_v_annotations, SpvOpMemberDecorate, {param_pack_type_id, (uint32_t)(scalar_types.size() - 2), SpvDecorationOffset, offset});
-            offset += args[i].type.bytes();
+            offset += arg.type.bytes();
         }
     }
 
@@ -1122,10 +1122,10 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(Stmt s,
 
     uint32_t binding_counter = 1;
     uint32_t scalar_index = 0;
-    for (size_t i = 0; i < args.size(); i++) {
+    for (const auto & arg : args) {
         uint32_t param_id = next_id++;
-        if (args[i].is_buffer) {
-            uint32_t element_type = map_type(args[i].type);
+        if (arg.is_buffer) {
+            uint32_t element_type = map_type(arg.type);
             uint32_t runtime_arr_type = next_id++;
             uint32_t struct_type = next_id++;
             uint32_t ptr_struct_type = next_id++;
@@ -1135,7 +1135,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(Stmt s,
             // Annotate the struct to indicate it's passed in a GLSL-style buffer block
             add_instruction(spir_v_annotations, SpvOpDecorate, {struct_type, SpvDecorationBufferBlock});
             // Annotate the array with its stride
-            add_instruction(spir_v_annotations, SpvOpDecorate, {runtime_arr_type, SpvDecorationArrayStride, (uint32_t)(args[i].type.bytes())});
+            add_instruction(spir_v_annotations, SpvOpDecorate, {runtime_arr_type, SpvDecorationArrayStride, (uint32_t)(arg.type.bytes())});
             // Annotate the offset for the array
             add_instruction(spir_v_annotations, SpvOpMemberDecorate, {struct_type, 0, SpvDecorationOffset, (uint32_t)0});
 
@@ -1146,14 +1146,14 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(Stmt s,
             add_instruction(spir_v_types, SpvOpVariable, {ptr_struct_type, param_id, SpvStorageClassUniform});
         } else {
             uint32_t access_chain_id = next_id++;
-            add_instruction(SpvOpInBoundsAccessChain, {map_pointer_type(args[i].type, SpvStorageClassUniform),
+            add_instruction(SpvOpInBoundsAccessChain, {map_pointer_type(arg.type, SpvStorageClassUniform),
                                                        access_chain_id,
                                                        param_pack_id,
                                                        emit_constant(UInt(32), &scalar_index)});
             scalar_index++;
-            add_instruction(SpvOpLoad, {map_type(args[i].type), param_id, access_chain_id});
+            add_instruction(SpvOpLoad, {map_type(arg.type), param_id, access_chain_id});
         }
-        symbol_table.push(args[i].name, {param_id, SpvStorageClassUniform});
+        symbol_table.push(arg.name, {param_id, SpvStorageClassUniform});
     }
 
     s.accept(this);
@@ -1176,7 +1176,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::add_kernel(Stmt s,
                      workgroup_size[0], workgroup_size[1], workgroup_size[2]});
 
     // Pop scope
-    for (auto arg : args) {
+    for (const auto& arg : args) {
         symbol_table.pop(arg.name);
     }
 

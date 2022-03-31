@@ -1,5 +1,5 @@
-#include "common.h"
 #include "internal/block_storage.h"
+#include "common.h"
 
 using namespace Halide::Runtime::Internal;
 
@@ -10,8 +10,8 @@ struct TestStruct {
 };
 
 template<typename T>
-T read_as(const BlockStorage& bs, size_t index) {
-    const T* ptr = static_cast<const T*>(bs[index]);
+T read_as(const BlockStorage &bs, size_t index) {
+    const T *ptr = static_cast<const T *>(bs[index]);
     return *ptr;
 }
 
@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
         bs.reserve(user_context, 256);
         halide_abort_if_false(user_context, bs.size() == 0);
 
-        int a1[4] = { 12, 34, 56, 78 };
+        int a1[4] = {12, 34, 56, 78};
         bs.append(user_context, &a1[0]);
         halide_abort_if_false(user_context, bs.size() == 1);
         halide_abort_if_false(user_context, read_as<int>(bs, 0) == a1[0]);
@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
         bs.insert(user_context, 1, &a1[2]);
         halide_abort_if_false(user_context, bs.size() == 3);
         halide_abort_if_false(user_context, read_as<int>(bs, 0) == a1[0]);
-        halide_abort_if_false(user_context, read_as<int>(bs, 1) == a1[2]); // inserted here
+        halide_abort_if_false(user_context, read_as<int>(bs, 1) == a1[2]);  // inserted here
         halide_abort_if_false(user_context, read_as<int>(bs, 2) == a1[1]);
 
         bs.prepend(user_context, &a1[3]);
@@ -62,10 +62,10 @@ int main(int argc, char **argv) {
         halide_abort_if_false(user_context, bs.size() == (a2_size + a3_size));
         halide_abort_if_false(user_context, read_as<int>(bs, 0) == a2[0]);
         halide_abort_if_false(user_context, read_as<int>(bs, 1) == a2[1]);
-        halide_abort_if_false(user_context, read_as<int>(bs, 2) == a3[0]); // a3 inserted here
+        halide_abort_if_false(user_context, read_as<int>(bs, 2) == a3[0]);  // a3 inserted here
         halide_abort_if_false(user_context, read_as<int>(bs, 3) == a3[1]);
         halide_abort_if_false(user_context, read_as<int>(bs, 4) == a3[2]);
-        halide_abort_if_false(user_context, read_as<int>(bs, 5) == a2[2]); // a2 resumes here
+        halide_abort_if_false(user_context, read_as<int>(bs, 5) == a2[2]);  // a2 resumes here
         halide_abort_if_false(user_context, read_as<int>(bs, 6) == a2[3]);
         halide_abort_if_false(user_context, read_as<int>(bs, 7) == a2[4]);
 
@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
     {
         BlockStorage::Config config = BlockStorage::default_config();
         config.entry_size = sizeof(int);
-        
+
         int a1[] = {98, 76, 54, 32, 10};
         size_t a1_size = 5;
 

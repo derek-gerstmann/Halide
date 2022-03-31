@@ -1,5 +1,5 @@
-#include "common.h"
 #include "internal/string_storage.h"
+#include "common.h"
 
 using namespace Halide::Runtime::Internal;
 
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
 
         StringStorage ss2;
         ss2.assign(user_context, ts2, ts2_length);
-        
+
         StringStorage ss3(ss1);
 
         halide_abort_if_false(user_context, ss1.length() == (ts1_length));

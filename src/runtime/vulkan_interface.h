@@ -49,9 +49,9 @@ extern WEAK halide_device_interface_t vulkan_device_interface;
 // clang-format on
 
 void WEAK vk_load_vulkan_functions(VkInstance instance) {
-    #define VULKAN_FN(fn) fn = (PFN_##fn)vkGetInstanceProcAddr(instance, #fn);
-    #include "vulkan_functions.h"
-    #undef VULKAN_FN
+#define VULKAN_FN(fn) fn = (PFN_##fn)vkGetInstanceProcAddr(instance, #fn);
+#include "vulkan_functions.h"
+#undef VULKAN_FN
 }
 
 // --

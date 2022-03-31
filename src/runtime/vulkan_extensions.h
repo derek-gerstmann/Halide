@@ -143,19 +143,18 @@ WEAK uint32_t vk_get_supported_instance_extensions(void *user_context, StringTab
 
         BlockStorage extension_properties(user_context, config);
         extension_properties.resize(user_context, avail_ext_count);
-        
-        vkEnumerateInstanceExtensionProperties(nullptr, 
-            &avail_ext_count, static_cast<VkExtensionProperties*>(extension_properties.data())
-        );
+
+        vkEnumerateInstanceExtensionProperties(nullptr,
+                                               &avail_ext_count, static_cast<VkExtensionProperties *>(extension_properties.data()));
 
         for (uint32_t n = 0; n < avail_ext_count; ++n) {
-            const VkExtensionProperties *properties = static_cast<const VkExtensionProperties*>(extension_properties[n]);
+            const VkExtensionProperties *properties = static_cast<const VkExtensionProperties *>(extension_properties[n]);
             debug(user_context) << "    extension: " << properties->extensionName << "\n";
         }
 
         ext_table.resize(user_context, avail_ext_count);
         for (uint32_t n = 0; n < avail_ext_count; ++n) {
-            const VkExtensionProperties *properties = static_cast<const VkExtensionProperties*>(extension_properties[n]);
+            const VkExtensionProperties *properties = static_cast<const VkExtensionProperties *>(extension_properties[n]);
             ext_table.assign(user_context, n, properties->extensionName);
         }
     }
@@ -194,23 +193,22 @@ WEAK uint32_t vk_get_supported_device_extensions(void *user_context, VkPhysicalD
     if (avail_ext_count) {
         BlockStorage::Config config;
         config.entry_size = sizeof(VkExtensionProperties);
-        config.minimum_capacity = avail_ext_count;        
+        config.minimum_capacity = avail_ext_count;
 
         BlockStorage extension_properties(user_context, config);
         extension_properties.resize(user_context, avail_ext_count);
-        
-        vkEnumerateDeviceExtensionProperties(physical_device, nullptr, 
-            &avail_ext_count, static_cast<VkExtensionProperties*>(extension_properties.data())
-        );
+
+        vkEnumerateDeviceExtensionProperties(physical_device, nullptr,
+                                             &avail_ext_count, static_cast<VkExtensionProperties *>(extension_properties.data()));
 
         for (uint32_t n = 0; n < avail_ext_count; ++n) {
-            const VkExtensionProperties *properties = static_cast<const VkExtensionProperties*>(extension_properties[n]);
+            const VkExtensionProperties *properties = static_cast<const VkExtensionProperties *>(extension_properties[n]);
             debug(user_context) << "    extension: " << properties->extensionName << "\n";
         }
 
         ext_table.resize(user_context, avail_ext_count);
         for (uint32_t n = 0; n < avail_ext_count; ++n) {
-            const VkExtensionProperties *properties = static_cast<const VkExtensionProperties*>(extension_properties[n]);
+            const VkExtensionProperties *properties = static_cast<const VkExtensionProperties *>(extension_properties[n]);
             ext_table.assign(user_context, n, properties->extensionName);
         }
     }

@@ -20,7 +20,7 @@ public:
     MemoryArena &operator=(const MemoryArena &) = delete;
 
     // Default initial capacity
-    static constexpr uint32_t default_capacity = uint32_t(32); // smallish
+    static constexpr uint32_t default_capacity = uint32_t(32);  // smallish
 
     // Configurable parameters
     struct Config {
@@ -43,7 +43,7 @@ public:
                     const SystemMemoryAllocatorFns &allocator = default_allocator());
 
     // Public interface methods
-    void *reserve(void *user_context, bool initialize=false);
+    void *reserve(void *user_context, bool initialize = false);
     void reclaim(void *user_context, void *ptr);
     bool collect(void *user_context);  //< returns true if any blocks were removed
     void destroy(void *user_context);
@@ -72,14 +72,14 @@ private:
         uint32_t free_index = 0;
     };
 
-    Block* create_block(void *user_context);
-    bool collect_block(void *user_context, Block* block);  //< returns true if any blocks were removed
-    void destroy_block(void *user_context, Block* block);
-    Block* lookup_block(void* user_context, uint32_t index);
+    Block *create_block(void *user_context);
+    bool collect_block(void *user_context, Block *block);  //< returns true if any blocks were removed
+    void destroy_block(void *user_context, Block *block);
+    Block *lookup_block(void *user_context, uint32_t index);
 
-    void *create_entry(void *user_context, Block* block, uint32_t index);
-    void destroy_entry(void *user_context, Block* block, uint32_t index);
-    void* lookup_entry(void* user_context, Block* block, uint32_t index);
+    void *create_entry(void *user_context, Block *block, uint32_t index);
+    void destroy_entry(void *user_context, Block *block, uint32_t index);
+    void *lookup_entry(void *user_context, Block *block, uint32_t index);
 
     Config config;
     BlockStorage blocks;
@@ -89,7 +89,7 @@ MemoryArena::MemoryArena(void *user_context,
                          const Config &cfg,
                          const SystemMemoryAllocatorFns &alloc)
     : config(cfg),
-      blocks(user_context, { sizeof(MemoryArena::Block), 32, 32 }, alloc) {
+      blocks(user_context, {sizeof(MemoryArena::Block), 32, 32}, alloc) {
     halide_debug_assert(user_context, config.minimum_block_capacity > 1);
 }
 
@@ -123,13 +123,13 @@ void MemoryArena::initialize(void *user_context,
                              const Config &cfg,
                              const SystemMemoryAllocatorFns &system_allocator) {
     config = cfg;
-    blocks.initialize(user_context, { sizeof(MemoryArena::Block), 32, 32 }, system_allocator);
+    blocks.initialize(user_context, {sizeof(MemoryArena::Block), 32, 32}, system_allocator);
     halide_debug_assert(user_context, config.minimum_block_capacity > 1);
 }
 
 void MemoryArena::destroy(void *user_context) {
     for (size_t i = blocks.size(); i--;) {
-        Block* block = lookup_block(user_context, i);
+        Block *block = lookup_block(user_context, i);
         halide_abort_if_false(user_context, block != nullptr);
         destroy_block(user_context, block);
     }
@@ -139,7 +139,7 @@ void MemoryArena::destroy(void *user_context) {
 bool MemoryArena::collect(void *user_context) {
     bool result = false;
     for (size_t i = blocks.size(); i--;) {
-        Block* block = lookup_block(user_context, i);
+        Block *block = lookup_block(user_context, i);
         halide_abort_if_false(user_context, block != nullptr);
         if (collect_block(user_context, block)) {
             blocks.remove(user_context, i);
@@ -153,7 +153,7 @@ void *MemoryArena::reserve(void *user_context, bool initialize) {
 
     // Scan blocks for a free entry
     for (size_t i = blocks.size(); i--;) {
-        Block* block = lookup_block(user_context, i);
+        Block *block = lookup_block(user_context, i);
         halide_abort_if_false(user_context, block != nullptr);
         if (block->free_index != invalid_entry) {
             return create_entry(user_context, block, block->free_index);
@@ -167,11 +167,11 @@ void *MemoryArena::reserve(void *user_context, bool initialize) {
 
     // All blocks full ... create a new one
     uint32_t index = 0;
-    Block* block = create_block(user_context);
-    void* entry_ptr = create_entry(user_context, block, index);
+    Block *block = create_block(user_context);
+    void *entry_ptr = create_entry(user_context, block, index);
 
     // Optionally clear the allocation if requested
-    if(initialize) {
+    if (initialize) {
         memset(entry_ptr, 0, config.entry_size);
     }
     return entry_ptr;
@@ -179,13 +179,13 @@ void *MemoryArena::reserve(void *user_context, bool initialize) {
 
 void MemoryArena::reclaim(void *user_context, void *entry_ptr) {
     for (size_t i = blocks.size(); i--;) {
-        Block* block = lookup_block(user_context, i);
+        Block *block = lookup_block(user_context, i);
         halide_abort_if_false(user_context, block != nullptr);
 
         // is entry_ptr in the address range of this block.
-        uint8_t* offset_ptr = static_cast<uint8_t *>(entry_ptr);
-        uint8_t* base_ptr = static_cast<uint8_t *>(block->entries);
-        uint8_t* end_ptr = static_cast<uint8_t*>(offset_address(block->entries, block->capacity * config.entry_size));
+        uint8_t *offset_ptr = static_cast<uint8_t *>(entry_ptr);
+        uint8_t *base_ptr = static_cast<uint8_t *>(block->entries);
+        uint8_t *end_ptr = static_cast<uint8_t *>(offset_address(block->entries, block->capacity * config.entry_size));
         if ((entry_ptr >= base_ptr) && (entry_ptr < end_ptr)) {
             const uint32_t offset = static_cast<uint32_t>(offset_ptr - base_ptr);
             const uint32_t index = offset / config.entry_size;
@@ -196,12 +196,12 @@ void MemoryArena::reclaim(void *user_context, void *entry_ptr) {
     halide_error(user_context, "MemoryArena: Pointer address doesn't belong to this memory pool!\n");
 }
 
-typename MemoryArena::Block* MemoryArena::create_block(void *user_context) {
+typename MemoryArena::Block *MemoryArena::create_block(void *user_context) {
 
     // resize capacity starting with initial up to 1.5 last capacity
     uint32_t new_capacity = config.minimum_block_capacity;
-    if(!blocks.empty()) {
-        const Block* last_block = static_cast<Block*>(blocks.back());
+    if (!blocks.empty()) {
+        const Block *last_block = static_cast<Block *>(blocks.back());
         new_capacity = (last_block->capacity * 3 / 2);
     }
 
@@ -222,10 +222,10 @@ typename MemoryArena::Block* MemoryArena::create_block(void *user_context) {
 
     const Block new_block = {new_entries, new_indices, new_status, new_capacity, 0};
     blocks.append(user_context, &new_block);
-    return static_cast<Block*>(blocks.back());
+    return static_cast<Block *>(blocks.back());
 }
 
-void MemoryArena::destroy_block(void *user_context, Block* block) {
+void MemoryArena::destroy_block(void *user_context, Block *block) {
     halide_abort_if_false(user_context, block != nullptr);
     if (block->entries != nullptr) {
         halide_abort_if_false(user_context, current_allocator().deallocate != nullptr);
@@ -238,7 +238,7 @@ void MemoryArena::destroy_block(void *user_context, Block* block) {
     }
 }
 
-bool MemoryArena::collect_block(void *user_context, Block* block) {
+bool MemoryArena::collect_block(void *user_context, Block *block) {
     halide_abort_if_false(user_context, block != nullptr);
     if (block->entries != nullptr) {
         bool can_collect = true;
@@ -256,17 +256,17 @@ bool MemoryArena::collect_block(void *user_context, Block* block) {
     return false;
 }
 
-MemoryArena::Block* MemoryArena::lookup_block(void* user_context, uint32_t index) {
-    return static_cast<Block*>(blocks[index]);    
+MemoryArena::Block *MemoryArena::lookup_block(void *user_context, uint32_t index) {
+    return static_cast<Block *>(blocks[index]);
 }
 
-void* MemoryArena::lookup_entry(void* user_context, Block* block, uint32_t index) {
+void *MemoryArena::lookup_entry(void *user_context, Block *block, uint32_t index) {
     halide_abort_if_false(user_context, block != nullptr);
     halide_abort_if_false(user_context, block->entries != nullptr);
     return offset_address(block->entries, index * config.entry_size);
 }
 
-void *MemoryArena::create_entry(void *user_context, Block* block, uint32_t index) {
+void *MemoryArena::create_entry(void *user_context, Block *block, uint32_t index) {
     void *entry_ptr = lookup_entry(user_context, block, index);
     block->free_index = block->indices[index];
     block->status[index] = AllocationStatus::InUse;
@@ -276,7 +276,7 @@ void *MemoryArena::create_entry(void *user_context, Block* block, uint32_t index
     return entry_ptr;
 }
 
-void MemoryArena::destroy_entry(void *user_context, Block* block, uint32_t index) {
+void MemoryArena::destroy_entry(void *user_context, Block *block, uint32_t index) {
     block->status[index] = AllocationStatus::Available;
     block->indices[index] = block->free_index;
     block->free_index = index;
