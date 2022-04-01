@@ -29,8 +29,9 @@ WEAK ScopedSpinLock::AtomicFlag build_options_lock = 0;
 WEAK bool build_options_initialized = false;
 
 // --------------------------------------------------------------------------
+namespace {
 
-WEAK void vk_set_layer_names_internal(const char *n) {
+void vk_set_layer_names_internal(const char *n) {
     if (n) {
         size_t buffer_size = sizeof(layer_names) / sizeof(layer_names[0]);
         strncpy(layer_names, n, buffer_size);
@@ -41,7 +42,7 @@ WEAK void vk_set_layer_names_internal(const char *n) {
     layer_names_initialized = true;
 }
 
-WEAK const char *vk_get_layer_names_internal(void *user_context) {
+const char *vk_get_layer_names_internal(void *user_context) {
     if (!layer_names_initialized) {
         const char *value = getenv("HL_VK_LAYERS");
         if (value == nullptr) { value = getenv("VK_INSTANCE_LAYERS"); }
@@ -50,7 +51,7 @@ WEAK const char *vk_get_layer_names_internal(void *user_context) {
     return layer_names;
 }
 
-WEAK void vk_set_extension_names_internal(const char *n) {
+void vk_set_extension_names_internal(const char *n) {
     if (n) {
         size_t buffer_size = sizeof(extension_names) / sizeof(extension_names[0]);
         strncpy(extension_names, n, buffer_size);
@@ -61,7 +62,7 @@ WEAK void vk_set_extension_names_internal(const char *n) {
     extension_names_initialized = true;
 }
 
-WEAK const char *vk_get_extension_names_internal(void *user_context) {
+const char *vk_get_extension_names_internal(void *user_context) {
     if (!extension_names_initialized) {
         const char *name = getenv("HL_VK_EXTENSIONS");
         vk_set_extension_names_internal(name);
@@ -69,7 +70,7 @@ WEAK const char *vk_get_extension_names_internal(void *user_context) {
     return extension_names;
 }
 
-WEAK void vk_set_device_type_internal(const char *n) {
+void vk_set_device_type_internal(const char *n) {
     if (n) {
         size_t buffer_size = sizeof(device_type) / sizeof(device_type[0]);
         strncpy(device_type, n, buffer_size);
@@ -80,7 +81,7 @@ WEAK void vk_set_device_type_internal(const char *n) {
     device_type_initialized = true;
 }
 
-WEAK const char *vk_get_device_type_internal(void *user_context) {
+const char *vk_get_device_type_internal(void *user_context) {
     if (!device_type_initialized) {
         const char *name = getenv("HL_VK_DEVICE_TYPE");
         vk_set_device_type_internal(name);
@@ -88,7 +89,7 @@ WEAK const char *vk_get_device_type_internal(void *user_context) {
     return device_type;
 }
 
-WEAK void vk_set_build_options_internal(const char *n) {
+void vk_set_build_options_internal(const char *n) {
     if (n) {
         size_t buffer_size = sizeof(build_options) / sizeof(build_options[0]);
         strncpy(build_options, n, buffer_size);
@@ -99,7 +100,7 @@ WEAK void vk_set_build_options_internal(const char *n) {
     build_options_initialized = true;
 }
 
-WEAK const char *vk_get_build_options_internal(void *user_context) {
+const char *vk_get_build_options_internal(void *user_context) {
     if (!build_options_initialized) {
         const char *name = getenv("HL_VK_BUILD_OPTIONS");
         vk_set_build_options_internal(name);
@@ -109,20 +110,20 @@ WEAK const char *vk_get_build_options_internal(void *user_context) {
 
 // --------------------------------------------------------------------------
 
-WEAK uint32_t vk_get_requested_layers(void *user_context, StringTable &layer_table) {
+uint32_t vk_get_requested_layers(void *user_context, StringTable &layer_table) {
     ScopedSpinLock lock(&layer_names_lock);
     const char *layer_names = vk_get_layer_names_internal(user_context);
     return layer_table.parse(user_context, layer_names, HL_VK_ENV_DELIM);
 }
 
-WEAK uint32_t vk_get_required_instance_extensions(void *user_context, StringTable &ext_table) {
+uint32_t vk_get_required_instance_extensions(void *user_context, StringTable &ext_table) {
     const char *required_ext_table[] = {"VK_KHR_get_physical_device_properties2"};
     const uint32_t required_ext_count = sizeof(required_ext_table) / sizeof(required_ext_table[0]);
     ext_table.fill(user_context, (const char **)required_ext_table, required_ext_count);
     return required_ext_count;
 }
 
-WEAK uint32_t vk_get_supported_instance_extensions(void *user_context, StringTable &ext_table) {
+uint32_t vk_get_supported_instance_extensions(void *user_context, StringTable &ext_table) {
 
     PFN_vkEnumerateInstanceExtensionProperties vkEnumerateInstanceExtensionProperties = (PFN_vkEnumerateInstanceExtensionProperties)
         vkGetInstanceProcAddr(nullptr, "vkEnumerateInstanceExtensionProperties");
@@ -162,14 +163,14 @@ WEAK uint32_t vk_get_supported_instance_extensions(void *user_context, StringTab
     return avail_ext_count;
 }
 
-WEAK uint32_t vk_get_required_device_extensions(void *user_context, StringTable &ext_table) {
+uint32_t vk_get_required_device_extensions(void *user_context, StringTable &ext_table) {
     const char *required_ext_table[] = {"VK_KHR_8bit_storage", "VK_KHR_storage_buffer_storage_class"};
     const uint32_t required_ext_count = sizeof(required_ext_table) / sizeof(required_ext_table[0]);
     ext_table.fill(user_context, (const char **)required_ext_table, required_ext_count);
     return required_ext_count;
 }
 
-WEAK uint32_t vk_get_optional_device_extensions(void *user_context, StringTable &ext_table) {
+uint32_t vk_get_optional_device_extensions(void *user_context, StringTable &ext_table) {
     const uint32_t optional_ext_count = 1;
     const char *optional_ext_table[] = {"VK_KHR_portability_subset"};
 
@@ -179,7 +180,7 @@ WEAK uint32_t vk_get_optional_device_extensions(void *user_context, StringTable 
     }
     return optional_ext_count;
 }
-WEAK uint32_t vk_get_supported_device_extensions(void *user_context, VkPhysicalDevice physical_device, StringTable &ext_table) {
+uint32_t vk_get_supported_device_extensions(void *user_context, VkPhysicalDevice physical_device, StringTable &ext_table) {
 
     if (vkEnumerateDeviceExtensionProperties == nullptr) {
         debug(user_context) << "Vulkan: Missing vkEnumerateDeviceExtensionProperties proc address! Invalid loader?!\n";
@@ -216,7 +217,7 @@ WEAK uint32_t vk_get_supported_device_extensions(void *user_context, VkPhysicalD
     return avail_ext_count;
 }
 
-WEAK bool vk_validate_required_extension_support(void *user_context,
+bool vk_validate_required_extension_support(void *user_context,
                                                  const StringTable &required_extensions,
                                                  const StringTable &supported_extensions) {
     bool validated = true;
@@ -232,10 +233,11 @@ WEAK bool vk_validate_required_extension_support(void *user_context,
 
 // --------------------------------------------------------------------------
 
-}  // namespace Vulkan
-}  // namespace Internal
-}  // namespace Runtime
-}  // namespace Halide
+}  // namespace: (anonymous)
+}  // namespace: Vulkan
+}  // namespace: Internal
+}  // namespace: Runtime
+}  // namespace: Halide
 
 // --------------------------------------------------------------------------
 

@@ -76,8 +76,10 @@ public:
 
 // --------------------------------------------------------------------------
 
+namespace {
+    
 // Initializes the instance (used by the default vk_create_context)
-WEAK int vk_create_instance(void *user_context, const StringTable &requested_layers, VkInstance *instance, const VkAllocationCallbacks *alloc_callbacks) {
+int vk_create_instance(void *user_context, const StringTable &requested_layers, VkInstance *instance, const VkAllocationCallbacks *alloc_callbacks) {
     debug(user_context) << "    vk_create_instance (user_context: " << user_context << ")\n";
 
     StringTable required_instance_extensions;
@@ -121,7 +123,7 @@ WEAK int vk_create_instance(void *user_context, const StringTable &requested_lay
     return halide_error_code_success;
 }
 
-WEAK int vk_select_device_for_context(void *user_context,
+int vk_select_device_for_context(void *user_context,
                                       VkInstance *instance, VkDevice *device,
                                       VkPhysicalDevice *physical_device,
                                       uint32_t *queue_family_index) {
@@ -200,7 +202,7 @@ WEAK int vk_select_device_for_context(void *user_context,
     return halide_error_code_success;
 }
 
-WEAK int vk_create_device(void *user_context, const StringTable &requested_layers, VkInstance *instance, VkDevice *device, VkQueue *queue,
+int vk_create_device(void *user_context, const StringTable &requested_layers, VkInstance *instance, VkDevice *device, VkQueue *queue,
                           VkPhysicalDevice *physical_device, uint32_t *queue_family_index, const VkAllocationCallbacks *alloc_callbacks) {
 
     StringTable required_device_extensions;
@@ -261,7 +263,7 @@ WEAK int vk_create_device(void *user_context, const StringTable &requested_layer
 }
 
 // Initializes the context (used by the default implementation of halide_acquire_context)
-WEAK int vk_create_context(void *user_context, VulkanMemoryAllocator **allocator,
+int vk_create_context(void *user_context, VulkanMemoryAllocator **allocator,
                            VkInstance *instance, VkDevice *device, VkQueue *queue,
                            VkPhysicalDevice *physical_device, uint32_t *queue_family_index) {
 
@@ -305,9 +307,10 @@ WEAK int vk_create_context(void *user_context, VulkanMemoryAllocator **allocator
 
 // --------------------------------------------------------------------------
 
-}  // namespace Vulkan
-}  // namespace Internal
-}  // namespace Runtime
-}  // namespace Halide
+}  // namespace: (anonymous)
+}  // namespace: Vulkan
+}  // namespace: Internal
+}  // namespace: Runtime
+}  // namespace: Halide
 
 #endif  /// HALIDE_RUNTIME_VULKAN_CONTEXT_H
