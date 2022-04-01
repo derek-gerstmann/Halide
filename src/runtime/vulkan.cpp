@@ -211,7 +211,7 @@ WEAK int halide_vulkan_device_release(void *user_context) {
 
 namespace {
 
-VkResult vk_create_command_pool(VkDevice device, uint32_t queue_index, const VkAllocationCallbacks *callbacks, VkCommandPool *command_pool) {
+VkResult vk_create_command_pool(void* user_context, VkDevice device, uint32_t queue_index, VulkanMemoryAllocator *allocator, VkCommandPool *command_pool) {
 
     VkCommandPoolCreateInfo command_pool_info =
         {
@@ -220,10 +220,15 @@ VkResult vk_create_command_pool(VkDevice device, uint32_t queue_index, const VkA
             0,                                           // flags.  may consider VK_COMMAND_POOL_CREATE_TRANSIENT_BIT
             queue_index                                  // queue family index corresponding to the compute command queue
         };
-    return vkCreateCommandPool(device, &command_pool_info, callbacks, command_pool);
+    return vkCreateCommandPool(device, &command_pool_info, allocator->callbacks(), command_pool);
 }
 
-VkResult vk_create_command_buffer(VkDevice device, VkCommandPool pool, VkCommandBuffer *command_buffer) {
+VkResult vk_destroy_command_pool(void* user_context, VkDevice device, VulkanMemoryAllocator* allocator, VkCommandPool command_pool) {
+    vkDestroyCommandPool(device, command_pool, allocator->callbacks());
+    return VK_SUCCESS;    
+}
+
+VkResult vk_create_command_buffer(void* user_context, VkDevice device, VkCommandPool pool, VkCommandBuffer *command_buffer) {
 
     VkCommandBufferAllocateInfo command_buffer_info =
         {
@@ -396,13 +401,13 @@ WEAK int halide_vulkan_copy_to_device(void *user_context, halide_buffer_t *halid
     // create a command buffer
     VkCommandPool command_pool;
     VkCommandBuffer command_buffer;
-    VkResult result = vk_create_command_pool(ctx.device, ctx.queue_family_index, ctx.allocation_callbacks(), &command_pool);
+    VkResult result = vk_create_command_pool(user_context, ctx.device, ctx.queue_family_index, ctx.allocator, &command_pool);
     if (result != VK_SUCCESS) {
         debug(user_context) << "Vulkan: vkCreateCommandPool returned: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
-    result = vk_create_command_buffer(ctx.device, command_pool, &command_buffer);
+    result = vk_create_command_buffer(user_context, ctx.device, command_pool, &command_buffer);
     if (result != VK_SUCCESS) {
         debug(user_context) << "Vulkan: vkCreateCommandBuffer returned: " << vk_get_error_name(result) << "\n";
         return result;
@@ -542,13 +547,13 @@ WEAK int halide_vulkan_copy_to_host(void *user_context, halide_buffer_t *halide_
     // create a command buffer
     VkCommandPool command_pool;
     VkCommandBuffer command_buffer;
-    VkResult result = vk_create_command_pool(ctx.device, ctx.queue_family_index, ctx.allocation_callbacks(), &command_pool);
+    VkResult result = vk_create_command_pool(user_context, ctx.device, ctx.queue_family_index, ctx.allocator, &command_pool);
     if (result != VK_SUCCESS) {
         error(user_context) << "Vulkan: vkCreateCommandPool returned: " << vk_get_error_name(result) << "\n";
         return -1;
     }
 
-    result = vk_create_command_buffer(ctx.device, command_pool, &command_buffer);
+    result = vk_create_command_buffer(user_context, ctx.device, command_pool, &command_buffer);
 
     // begin the command buffer
     VkCommandBufferBeginInfo command_buffer_begin_info =
@@ -650,6 +655,8 @@ WEAK uint32_t vk_count_bindings_for_descriptor_set(void *user_context,
     return num_bindings;
 }
 
+// --
+
 WEAK size_t vk_estimate_scalar_uniform_buffer_size(void *user_context,
                                                    size_t arg_sizes[],
                                                    void *args[],
@@ -729,6 +736,8 @@ WEAK void vk_destroy_scalar_uniform_buffer(void *user_context, VulkanMemoryAlloc
     allocator->reclaim(user_context, scalar_args_region);
 }
 
+// --
+
 WEAK VkResult vk_create_descriptor_set_layout(void *user_context,
                                               VkDevice device,
                                               size_t arg_sizes[],
@@ -796,9 +805,20 @@ WEAK VkResult vk_create_descriptor_set_layout(void *user_context,
     return VK_SUCCESS;
 }
 
+WEAK VkResult vk_destroy_descriptor_set_layout(void* user_context, 
+                                               VkDevice device,
+                                               VulkanMemoryAllocator *allocator,
+                                               VkDescriptorSetLayout descriptor_set_layout) {
+
+    vkDestroyDescriptorSetLayout(device, descriptor_set_layout, allocator->callbacks());
+    return VK_SUCCESS;
+}
+
+// --
+
 WEAK VkResult vk_create_pipeline_layout(void *user_context,
                                         VkDevice device,
-                                        const VkAllocationCallbacks *alloc_callbacks,
+                                        VulkanMemoryAllocator *allocator,
                                         VkDescriptorSetLayout *descriptor_set_layout,
                                         VkPipelineLayout *pipeline_layout) {
 
@@ -818,7 +838,7 @@ WEAK VkResult vk_create_pipeline_layout(void *user_context,
         nullptr                                         // pointer to push constant range structs
     };
 
-    VkResult result = vkCreatePipelineLayout(device, &pipeline_layout_info, alloc_callbacks, pipeline_layout);
+    VkResult result = vkCreatePipelineLayout(device, &pipeline_layout_info, allocator->callbacks(), pipeline_layout);
     if (result != VK_SUCCESS) {
         debug(user_context) << "vkCreatePipelineLayout returned " << vk_get_error_name(result) << "\n";
         return result;
@@ -826,9 +846,20 @@ WEAK VkResult vk_create_pipeline_layout(void *user_context,
     return VK_SUCCESS;
 }
 
+WEAK VkResult vk_destroy_pipeline_layout(void* user_context, 
+                                          VkDevice device,
+                                          VulkanMemoryAllocator *allocator,
+                                          VkPipelineLayout pipeline_layout) {
+
+    vkDestroyPipelineLayout(device, pipeline_layout, allocator->callbacks());
+    return VK_SUCCESS;
+}
+
+// --
+
 WEAK VkResult vk_create_compute_pipeline(void *user_context,
                                          VkDevice device,
-                                         const VkAllocationCallbacks *alloc_callbacks,
+                                         VulkanMemoryAllocator *allocator,
                                          const char *entry_name,
                                          VkShaderModule shader_module,
                                          VkPipelineLayout pipeline_layout,
@@ -854,7 +885,7 @@ WEAK VkResult vk_create_compute_pipeline(void *user_context,
             0                 // base pipeline index for derived pipeline
         };
 
-    VkResult result = vkCreateComputePipelines(device, 0, 1, &compute_pipeline_info, alloc_callbacks, compute_pipeline);
+    VkResult result = vkCreateComputePipelines(device, 0, 1, &compute_pipeline_info, allocator->callbacks(), compute_pipeline);
     if (result != VK_SUCCESS) {
         debug(user_context) << "Vulkan: Failed to create compute pipeline! vkCreateComputePipelines returned " << vk_get_error_name(result) << "\n";
         return result;
@@ -863,9 +894,20 @@ WEAK VkResult vk_create_compute_pipeline(void *user_context,
     return VK_SUCCESS;
 }
 
+WEAK VkResult vk_destroy_compute_pipeline(void* user_context, 
+                                          VkDevice device,
+                                          VulkanMemoryAllocator *allocator,
+                                          VkPipeline compute_pipeline) {
+
+    vkDestroyPipeline(device, compute_pipeline, allocator->callbacks());
+    return VK_SUCCESS;
+}
+
+// --
+
 WEAK VkResult vk_create_descriptor_pool(void *user_context,
                                         VkDevice device,
-                                        const VkAllocationCallbacks *alloc_callbacks,
+                                        VulkanMemoryAllocator *allocator,
                                         uint32_t storage_buffer_count,
                                         VkDescriptorPool *descriptor_pool) {
 
@@ -892,13 +934,25 @@ WEAK VkResult vk_create_descriptor_pool(void *user_context,
             descriptor_pool_sizes                           // ptr to descriptr pool sizes
         };
 
-    VkResult result = vkCreateDescriptorPool(device, &descriptor_pool_info, alloc_callbacks, descriptor_pool);
+    VkResult result = vkCreateDescriptorPool(device, &descriptor_pool_info, allocator->callbacks(), descriptor_pool);
     if (result != VK_SUCCESS) {
         debug(user_context) << "Vulkan: Failed to create descriptor pool! vkCreateDescriptorPool returned " << vk_get_error_name(result) << "\n";
         return result;
     }
     return VK_SUCCESS;
 }
+
+
+WEAK VkResult vk_destroy_descriptor_pool(void* user_context, 
+                                         VkDevice device,
+                                         VulkanMemoryAllocator *allocator,
+                                         VkDescriptorPool descriptor_pool) {
+
+    vkDestroyDescriptorPool(device, descriptor_pool, allocator->callbacks());
+    return VK_SUCCESS;
+}
+
+// --
 
 WEAK VkResult vk_create_descriptor_set(void *user_context,
                                        VkDevice device,
@@ -926,7 +980,7 @@ WEAK VkResult vk_create_descriptor_set(void *user_context,
 
 WEAK VkResult vk_update_descriptor_set(void *user_context,
                                        VkDevice device,
-                                       const VkAllocationCallbacks *alloc_callbacks,
+                                       VulkanMemoryAllocator *allocator,
                                        VkBuffer scalar_args_buffer,
                                        size_t storage_buffer_count,
                                        size_t arg_sizes[],
@@ -1105,15 +1159,15 @@ WEAK int halide_vulkan_run(void *user_context,
     // 5. Set bindings for buffers in the descriptor set
     // 6. Create a command pool
     // 7. Create a command buffer from the command pool
-    // 8. Begin the command buffer
-    // 9. Bind the compute pipeline from #3
-    // 10. Bind the descriptor set
-    // 11. Add a dispatch to the command buffer
-    // 12. End the command buffer
-    // 13. Submit the command buffer to our command queue
+    // 8. Fill the command buffer with a dispatch call
+    // 8a. Bind the compute pipeline from #3
+    // 8b. Bind the descriptor set
+    // 8c. Add a dispatch to the command buffer
+    // 8d. End the command buffer
+    // 9. Submit the command buffer to our command queue
     // --- The following isn't best practice, but it's in line
     //     with what we do in Metal etc. ---
-    // 14. Wait until the queue is done with the command buffer
+    // 10. Wait until the queue is done with the command buffer
 
     uint32_t num_bindings = vk_count_bindings_for_descriptor_set(user_context, arg_sizes, args, arg_is_buffer);
 
@@ -1141,7 +1195,7 @@ WEAK int halide_vulkan_run(void *user_context,
 
     ///// 2. Create a pipeline layout
     VkPipelineLayout pipeline_layout;
-    result = vk_create_pipeline_layout(user_context, ctx.device, ctx.allocator->callbacks(), &descriptor_set_layout, &pipeline_layout);
+    result = vk_create_pipeline_layout(user_context, ctx.device, ctx.allocator, &descriptor_set_layout, &pipeline_layout);
     if (result != VK_SUCCESS) {
         error(user_context) << "Vulkan: vk_create_pipeline_layout() failed! Unable to create shader module! Error: " << vk_get_error_name(result) << "\n";
         return result;
@@ -1159,7 +1213,7 @@ WEAK int halide_vulkan_run(void *user_context,
 
     // Construct the pipeline
     VkPipeline compute_pipeline;
-    result = vk_create_compute_pipeline(user_context, ctx.device, ctx.allocator->callbacks(), entry_name, *shader_module, pipeline_layout, &compute_pipeline);
+    result = vk_create_compute_pipeline(user_context, ctx.device, ctx.allocator, entry_name, *shader_module, pipeline_layout, &compute_pipeline);
     if (result != VK_SUCCESS) {
         error(user_context) << "Vulkan: vk_create_compute_pipeline() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
@@ -1169,7 +1223,7 @@ WEAK int halide_vulkan_run(void *user_context,
     // Construct a descriptor pool
     VkDescriptorPool descriptor_pool;
     uint32_t storage_buffer_count = num_bindings - 1;
-    result = vk_create_descriptor_pool(user_context, ctx.device, ctx.allocator->callbacks(), storage_buffer_count, &descriptor_pool);
+    result = vk_create_descriptor_pool(user_context, ctx.device, ctx.allocator, storage_buffer_count, &descriptor_pool);
     if (result != VK_SUCCESS) {
         error(user_context) << "Vulkan: vk_create_descriptor_pool() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
@@ -1184,7 +1238,7 @@ WEAK int halide_vulkan_run(void *user_context,
     }
 
     //// 5. Set bindings for buffers in the descriptor set
-    result = vk_update_descriptor_set(user_context, ctx.device, ctx.allocator->callbacks(), *scalar_args_buffer, storage_buffer_count, arg_sizes, args, arg_is_buffer, descriptor_set);
+    result = vk_update_descriptor_set(user_context, ctx.device, ctx.allocator, *scalar_args_buffer, storage_buffer_count, arg_sizes, args, arg_is_buffer, descriptor_set);
     if (result != VK_SUCCESS) {
         debug(user_context) << "Vulkan: vk_update_descriptor_set() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
@@ -1193,7 +1247,7 @@ WEAK int halide_vulkan_run(void *user_context,
     //// 6. Create a command pool
     // TODO: This should really be part of the acquire_context API
     VkCommandPool command_pool;
-    result = vk_create_command_pool(ctx.device, ctx.queue_family_index, ctx.allocator->callbacks(), &command_pool);
+    result = vk_create_command_pool(user_context, ctx.device, ctx.queue_family_index, ctx.allocator, &command_pool);
     if (result != VK_SUCCESS) {
         debug(user_context) << "Vulkan: vk_create_descriptor_pool() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
@@ -1201,7 +1255,7 @@ WEAK int halide_vulkan_run(void *user_context,
 
     //// 7. Create a command buffer from the command pool
     VkCommandBuffer command_buffer;
-    result = vk_create_command_buffer(ctx.device, command_pool, &command_buffer);
+    result = vk_create_command_buffer(user_context, ctx.device, command_pool, &command_buffer);
     if (result != VK_SUCCESS) {
         debug(user_context) << "Vulkan: vk_create_command_buffer() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
@@ -1216,28 +1270,28 @@ WEAK int halide_vulkan_run(void *user_context,
         return result;
     }
 
-    //// 13. Submit the command buffer to our command queue
+    //// 9. Submit the command buffer to our command queue
     result = vk_submit_command_buffer(user_context, ctx.queue, command_buffer);
     if (result != VK_SUCCESS) {
         debug(user_context) << "Vulkan: vk_submit_command_buffer() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
-    //// 14. Wait until the queue is done with the command buffer
+    //// 10. Wait until the queue is done with the command buffer
     result = vkQueueWaitIdle(ctx.queue);
     if (result != VK_SUCCESS) {
         debug(user_context) << "vkQueueWaitIdle returned " << vk_get_error_name(result) << "\n";
         return result;
     }
 
-    // Release the uniform buffer for the scalar args
+    //// 11. Cleanup    
+    // Release all temporary objects for this run
     vk_destroy_scalar_uniform_buffer(user_context, ctx.allocator, scalar_args_region);
-
-    vkDestroyDescriptorSetLayout(ctx.device, descriptor_set_layout, ctx.allocator->callbacks());
-    vkDestroyDescriptorPool(ctx.device, descriptor_pool, ctx.allocator->callbacks());
-    vkDestroyPipelineLayout(ctx.device, pipeline_layout, ctx.allocator->callbacks());
-    vkDestroyPipeline(ctx.device, compute_pipeline, ctx.allocator->callbacks());
-    vkDestroyCommandPool(ctx.device, command_pool, ctx.allocator->callbacks());
+    vk_destroy_descriptor_set_layout(user_context, ctx.device, ctx.allocator, descriptor_set_layout);
+    vk_destroy_descriptor_pool(user_context, ctx.device, ctx.allocator, descriptor_pool);
+    vk_destroy_pipeline_layout(user_context, ctx.device, ctx.allocator, pipeline_layout);
+    vk_destroy_compute_pipeline(user_context, ctx.device, ctx.allocator, compute_pipeline);
+    vk_destroy_command_pool(user_context, ctx.device, ctx.allocator, command_pool);
 
 #ifdef DEBUG_RUNTIME
     uint64_t t_after = halide_current_time_ns(user_context);
