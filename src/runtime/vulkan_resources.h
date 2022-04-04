@@ -725,15 +725,8 @@ int vk_do_multidimensional_copy(void *user_context, VkCommandBuffer command_buff
             c.chunk_size                    // size
         };
 
-        MemoryRegion *src_region = reinterpret_cast<MemoryRegion *>(c.src);
-        MemoryRegion *dst_region = reinterpret_cast<MemoryRegion *>(c.dst);
-        if (!src_region || !dst_region) {
-            error(user_context) << "Vulkan: Failed to retrieve buffer for device memory!\n";
-            return -1;
-        }
-
-        VkBuffer *src_buffer = reinterpret_cast<VkBuffer *>(src_region->handle);
-        VkBuffer *dst_buffer = reinterpret_cast<VkBuffer *>(dst_region->handle);
+        VkBuffer *src_buffer = reinterpret_cast<VkBuffer *>(c.src);
+        VkBuffer *dst_buffer = reinterpret_cast<VkBuffer *>(c.dst);
         if (!src_buffer || !dst_buffer) {
             error(user_context) << "Vulkan: Failed to retrieve buffer for device memory!\n";
             return -1;

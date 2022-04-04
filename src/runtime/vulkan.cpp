@@ -326,6 +326,16 @@ WEAK int halide_vulkan_copy_to_device(void *user_context, halide_buffer_t *halid
     // unmap the pointer
     ctx.allocator->unmap(user_context, staging_region);
 
+    // get the allocated region for the device
+    MemoryRegion *device_region = reinterpret_cast<MemoryRegion *>(halide_buffer->device);
+
+    // retrieve the buffer from the region
+    VkBuffer *device_buffer = reinterpret_cast<VkBuffer *>(device_region->handle);
+    if (device_buffer == nullptr) {
+        error(user_context) << "Vulkan: Failed to retrieve buffer for device memory!\n";
+        return halide_error_code_internal_error;
+    }
+
     // create a command buffer
     VkCommandPool command_pool;
     VkCommandBuffer command_buffer;
@@ -356,27 +366,12 @@ WEAK int halide_vulkan_copy_to_device(void *user_context, halide_buffer_t *halid
         return result;
     }
 
-    // get the allocated region for the device
-    MemoryRegion *device_region = reinterpret_cast<MemoryRegion *>(halide_buffer->device);
-
-    // retrieve the buffer from the region
-    VkBuffer *device_buffer = reinterpret_cast<VkBuffer *>(device_region->handle);
-    if (device_buffer == nullptr) {
-        error(user_context) << "Vulkan: Failed to retrieve buffer for device memory!\n";
-        return halide_error_code_internal_error;
-    }
-
-    // enqueue the copy operation
-    uint64_t src_offset = 0; // copy_helper.src_begin;
+    // enqueue the copy operation, using the allocated buffers
+    copy_helper.src = (uint64_t)(staging_buffer);
+    copy_helper.dst = (uint64_t)(device_buffer);
+    uint64_t src_offset = copy_helper.src_begin;
     uint64_t dst_offset = 0;
-    // FIXME: vk_do_multidimensional_copy(user_context, command_buffer, copy_helper, src_offset, dst_offset, halide_buffer->dimensions);
-    // TODO: only copy the regions that should be copied
-    VkBufferCopy staging_copy = {
-        src_offset,                     // srcOffset
-        dst_offset,                     // dstOffset
-        halide_buffer->size_in_bytes()  // size
-    };
-    vkCmdCopyBuffer(command_buffer, *staging_buffer, *device_buffer, 1, &staging_copy);
+    vk_do_multidimensional_copy(user_context, command_buffer, copy_helper, src_offset, dst_offset, halide_buffer->dimensions);
 
     // end the command buffer
     result = vkEndCommandBuffer(command_buffer);
@@ -470,6 +465,16 @@ WEAK int halide_vulkan_copy_to_host(void *user_context, halide_buffer_t *halide_
         return halide_error_code_internal_error;
     }
 
+    // get the allocated region for the device
+    MemoryRegion *device_region = reinterpret_cast<MemoryRegion *>(halide_buffer->device);
+
+    // retrieve the buffer from the region
+    VkBuffer *device_buffer = reinterpret_cast<VkBuffer *>(device_region->handle);
+    if (device_buffer == nullptr) {
+        error(user_context) << "Vulkan: Failed to retrieve buffer for device memory!\n";
+        return halide_error_code_internal_error;
+    }
+
     // create a command buffer
     VkCommandPool command_pool;
     VkCommandBuffer command_buffer;
@@ -496,27 +501,13 @@ WEAK int halide_vulkan_copy_to_host(void *user_context, halide_buffer_t *halide_
         return result;
     }
 
-    // get the allocated region for the device
-    MemoryRegion *device_region = reinterpret_cast<MemoryRegion *>(halide_buffer->device);
-
-    // retrieve the buffer from the region
-    VkBuffer *device_buffer = reinterpret_cast<VkBuffer *>(device_region->handle);
-    if (device_buffer == nullptr) {
-        error(user_context) << "Vulkan: Failed to retrieve buffer for device memory!\n";
-        return halide_error_code_internal_error;
-    }
-
-    // enqueue the copy operation
-    uint64_t src_offset = 0; // copy_helper.src_begin;
+    // enqueue the copy operation, using the allocated buffers
+    uint64_t copy_dst = copy_helper.dst;
+    copy_helper.src = (uint64_t)(device_buffer);
+    copy_helper.dst = (uint64_t)(staging_buffer);
+    uint64_t src_offset = copy_helper.src_begin;
     uint64_t dst_offset = 0;
-    // FIXME: vk_do_multidimensional_copy(user_context, command_buffer, copy_helper, src_offset, dst_offset, halide_buffer->dimensions);
-    // TODO: only copy the regions that should be copied
-    VkBufferCopy staging_copy = {
-        src_offset,                     // srcOffset
-        dst_offset,                     // dstOffset
-        halide_buffer->size_in_bytes()  // size
-    };
-    vkCmdCopyBuffer(command_buffer, *device_buffer, *staging_buffer, 1, &staging_copy);
+    vk_do_multidimensional_copy(user_context, command_buffer, copy_helper, src_offset, dst_offset, halide_buffer->dimensions);
 
     // end the command buffer
     result = vkEndCommandBuffer(command_buffer);
@@ -560,6 +551,7 @@ WEAK int halide_vulkan_copy_to_host(void *user_context, halide_buffer_t *halide_
     }
 
     // copy to the (host-visible/coherent) staging buffer
+    copy_helper.dst = copy_dst;
     copy_helper.src = (uint64_t)(stage_host_ptr);
     copy_memory(copy_helper, user_context);
 
