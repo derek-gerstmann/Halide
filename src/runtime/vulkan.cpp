@@ -32,8 +32,10 @@ extern "C" {
 WEAK int halide_vulkan_acquire_context(void *user_context,
                                        halide_vulkan_memory_allocator **allocator,
                                        VkInstance *instance,
-                                       VkDevice *device, VkQueue *queue,
+                                       VkDevice *device, 
                                        VkPhysicalDevice *physical_device,
+                                       VkCommandPool *command_pool,
+                                       VkQueue *queue,
                                        uint32_t *queue_family_index,
                                        bool create) {
 
@@ -53,8 +55,9 @@ WEAK int halide_vulkan_acquire_context(void *user_context,
                                        reinterpret_cast<VulkanMemoryAllocator **>(&cached_allocator),
                                        &cached_instance,
                                        &cached_device,
-                                       &cached_queue,
                                        &cached_physical_device,
+                                       &cached_command_pool,
+                                       &cached_queue,
                                        &cached_queue_family_index);
         if (result != halide_error_code_success) {
             __atomic_clear(&thread_lock, __ATOMIC_RELEASE);
@@ -65,8 +68,9 @@ WEAK int halide_vulkan_acquire_context(void *user_context,
     *allocator = cached_allocator;
     *instance = cached_instance;
     *device = cached_device;
-    *queue = cached_queue;
     *physical_device = cached_physical_device;
+    *command_pool = cached_command_pool;
+    *queue = cached_queue;
     *queue_family_index = cached_queue_family_index;
     return 0;
 }
@@ -174,21 +178,23 @@ WEAK int halide_vulkan_device_release(void *user_context) {
     debug(user_context)
         << "Vulkan: halide_vulkan_device_release (user_context: " << user_context << ")\n";
 
+    VulkanMemoryAllocator *allocator;
     VkInstance instance;
     VkDevice device;
-    VkQueue queue;
-    VulkanMemoryAllocator *allocator;
+    VkCommandPool command_pool;
     VkPhysicalDevice physical_device;
+    VkQueue queue;
     uint32_t _throwaway;
 
     int acquire_status = halide_vulkan_acquire_context(user_context,
                                                        reinterpret_cast<halide_vulkan_memory_allocator **>(&allocator),
-                                                       &instance, &device, &queue, &physical_device, &_throwaway, false);
+                                                       &instance, &device, &physical_device, &command_pool, &queue, &_throwaway, false);
     halide_debug_assert(user_context, acquire_status == VK_SUCCESS);
     (void)acquire_status;
     if (instance != nullptr) {
 
         vkQueueWaitIdle(queue);
+        vk_destroy_command_pool(user_context, allocator, command_pool);
         vk_destroy_shader_modules(user_context, allocator);
         vk_destroy_memory_allocator(user_context, allocator);
 
@@ -337,15 +343,8 @@ WEAK int halide_vulkan_copy_to_device(void *user_context, halide_buffer_t *halid
     }
 
     // create a command buffer
-    VkCommandPool command_pool;
     VkCommandBuffer command_buffer;
-    VkResult result = vk_create_command_pool(user_context, ctx.allocator, ctx.queue_family_index, &command_pool);
-    if (result != VK_SUCCESS) {
-        debug(user_context) << "Vulkan: vkCreateCommandPool returned: " << vk_get_error_name(result) << "\n";
-        return result;
-    }
-
-    result = vk_create_command_buffer(user_context, ctx.allocator, command_pool, &command_buffer);
+    VkResult result = vk_create_command_buffer(user_context, ctx.allocator, ctx.command_pool, &command_buffer);
     if (result != VK_SUCCESS) {
         debug(user_context) << "Vulkan: vkCreateCommandBuffer returned: " << vk_get_error_name(result) << "\n";
         return result;
@@ -409,7 +408,7 @@ WEAK int halide_vulkan_copy_to_device(void *user_context, halide_buffer_t *halid
 
     //// 15. Reclaim the staging buffer
     ctx.allocator->reclaim(user_context, staging_region);
-
+    
  #ifdef DEBUG_RUNTIME
     uint64_t t_after = halide_current_time_ns(user_context);
     debug(user_context) << "    Time: " << (t_after - t_before) / 1.0e6 << " ms\n";
@@ -476,15 +475,12 @@ WEAK int halide_vulkan_copy_to_host(void *user_context, halide_buffer_t *halide_
     }
 
     // create a command buffer
-    VkCommandPool command_pool;
     VkCommandBuffer command_buffer;
-    VkResult result = vk_create_command_pool(user_context, ctx.allocator, ctx.queue_family_index, &command_pool);
+    VkResult result = vk_create_command_buffer(user_context, ctx.allocator, ctx.command_pool, &command_buffer);
     if (result != VK_SUCCESS) {
-        error(user_context) << "Vulkan: vkCreateCommandPool returned: " << vk_get_error_name(result) << "\n";
+        error(user_context) << "Vulkan: vk_create_command_buffer returned: " << vk_get_error_name(result) << "\n";
         return -1;
     }
-
-    result = vk_create_command_buffer(user_context, ctx.allocator, command_pool, &command_buffer);
 
     // begin the command buffer
     VkCommandBufferBeginInfo command_buffer_begin_info =
@@ -603,18 +599,17 @@ WEAK int halide_vulkan_run(void *user_context,
     // --- The above can be cached between invocations ---
     // 4. Create a descriptor set
     // 5. Set bindings for buffers in the descriptor set
-    // 6. Create a command pool
-    // 7. Create a command buffer from the command pool
-    // 8. Fill the command buffer with a dispatch call
-    // 8a. Bind the compute pipeline from #3
-    // 8b. Bind the descriptor set
-    // 8c. Add a dispatch to the command buffer
-    // 8d. End the command buffer
-    // 9. Submit the command buffer to our command queue
+    // 6. Create a command buffer from the command pool
+    // 7. Fill the command buffer with a dispatch call
+    // 7a. Bind the compute pipeline from #3
+    // 7b. Bind the descriptor set
+    // 7c. Add a dispatch to the command buffer
+    // 7d. End the command buffer
+    // 8. Submit the command buffer to our command queue
     // --- The following isn't best practice, but it's in line
     //     with what we do in Metal etc. ---
-    // 10. Wait until the queue is done with the command buffer
-    // 11. Cleanup all temporary objects
+    // 9. Wait until the queue is done with the command buffer
+    // 10. Cleanup all temporary objects
 
     uint32_t num_bindings = vk_count_bindings_for_descriptor_set(user_context, arg_sizes, args, arg_is_buffer);
 
@@ -691,24 +686,15 @@ WEAK int halide_vulkan_run(void *user_context,
         return result;
     }
 
-    //// 6. Create a command pool
-    // TODO: This should really be part of the acquire_context API
-    VkCommandPool command_pool;
-    result = vk_create_command_pool(user_context, ctx.allocator, ctx.queue_family_index, &command_pool);
-    if (result != VK_SUCCESS) {
-        debug(user_context) << "Vulkan: vk_create_descriptor_pool() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
-        return result;
-    }
-
-    //// 7. Create a command buffer from the command pool
+    //// 6. Create a command buffer from the command pool
     VkCommandBuffer command_buffer;
-    result = vk_create_command_buffer(user_context, ctx.allocator, command_pool, &command_buffer);
+    result = vk_create_command_buffer(user_context, ctx.allocator, ctx.command_pool, &command_buffer);
     if (result != VK_SUCCESS) {
         debug(user_context) << "Vulkan: vk_create_command_buffer() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
-    //// 8. Begin the command buffer
+    //// 7. Begin the command buffer
     result = vk_fill_command_buffer_with_dispatch_call(user_context,
                                                        ctx.device, command_buffer, compute_pipeline, pipeline_layout, descriptor_set,
                                                        blocksX, blocksY, blocksZ);
@@ -717,28 +703,29 @@ WEAK int halide_vulkan_run(void *user_context,
         return result;
     }
 
-    //// 9. Submit the command buffer to our command queue
+    //// 8. Submit the command buffer to our command queue
     result = vk_submit_command_buffer(user_context, ctx.queue, command_buffer);
     if (result != VK_SUCCESS) {
         debug(user_context) << "Vulkan: vk_submit_command_buffer() failed! Unable to proceed! Error: " << vk_get_error_name(result) << "\n";
         return result;
     }
 
-    //// 10. Wait until the queue is done with the command buffer
+    //// 9. Wait until the queue is done with the command buffer
     result = vkQueueWaitIdle(ctx.queue);
     if (result != VK_SUCCESS) {
         debug(user_context) << "vkQueueWaitIdle returned " << vk_get_error_name(result) << "\n";
         return result;
     }
 
-    //// 11. Cleanup    
+    //// 10. Cleanup    
     // Release all temporary objects for this run
     vk_destroy_scalar_uniform_buffer(user_context, ctx.allocator, scalar_args_region);
     vk_destroy_descriptor_set_layout(user_context, ctx.allocator, descriptor_set_layout);
     vk_destroy_descriptor_pool(user_context, ctx.allocator, descriptor_pool);
     vk_destroy_pipeline_layout(user_context, ctx.allocator, pipeline_layout);
     vk_destroy_compute_pipeline(user_context, ctx.allocator, compute_pipeline);
-    vk_destroy_command_pool(user_context, ctx.allocator, command_pool);
+
+    vkResetCommandPool(ctx.device, ctx.command_pool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
 
 #ifdef DEBUG_RUNTIME
     uint64_t t_after = halide_current_time_ns(user_context);

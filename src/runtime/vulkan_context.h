@@ -23,6 +23,7 @@ namespace Vulkan {
 halide_vulkan_memory_allocator *WEAK cached_allocator = nullptr;
 VkInstance WEAK cached_instance = nullptr;
 VkDevice WEAK cached_device = nullptr;
+VkCommandPool WEAK cached_command_pool = 0;
 VkQueue WEAK cached_queue = nullptr;
 VkPhysicalDevice WEAK cached_physical_device = nullptr;
 uint32_t WEAK cached_queue_family_index = 0;
@@ -38,6 +39,7 @@ public:
     VulkanMemoryAllocator *allocator;
     VkInstance instance;
     VkDevice device;
+    VkCommandPool command_pool;
     VkPhysicalDevice physical_device;
     VkQueue queue;
     uint32_t queue_family_index;  // used for operations requiring queue family
@@ -48,6 +50,7 @@ public:
           allocator(nullptr),
           instance(nullptr),
           device(nullptr),
+          command_pool(0),
           physical_device(nullptr),
           queue(nullptr),
           queue_family_index(0),
@@ -55,11 +58,12 @@ public:
 
         int result = halide_vulkan_acquire_context(user_context,
                                                    reinterpret_cast<halide_vulkan_memory_allocator **>(&allocator),
-                                                   &instance, &device, &queue, &physical_device, &queue_family_index);
+                                                   &instance, &device, &physical_device, &command_pool, &queue, &queue_family_index);
         halide_abort_if_false(user_context, result == 0);
         halide_abort_if_false(user_context, allocator != nullptr);
         halide_abort_if_false(user_context, instance != nullptr);
         halide_abort_if_false(user_context, device != nullptr);
+        halide_abort_if_false(user_context, command_pool != 0);
         halide_abort_if_false(user_context, queue != nullptr);
         halide_abort_if_false(user_context, physical_device != nullptr);
     }
@@ -264,8 +268,8 @@ int vk_create_device(void *user_context, const StringTable &requested_layers, Vk
 
 // Initializes the context (used by the default implementation of halide_acquire_context)
 int vk_create_context(void *user_context, VulkanMemoryAllocator **allocator,
-                           VkInstance *instance, VkDevice *device, VkQueue *queue,
-                           VkPhysicalDevice *physical_device, uint32_t *queue_family_index) {
+                           VkInstance *instance, VkDevice *device, VkPhysicalDevice *physical_device, 
+                           VkCommandPool *command_pool, VkQueue *queue, uint32_t *queue_family_index) {
 
     debug(user_context) << "    vk_create_context (user_context: " << user_context << ")\n";
 
@@ -279,7 +283,8 @@ int vk_create_context(void *user_context, VulkanMemoryAllocator **allocator,
     const VkAllocationCallbacks *alloc_callbacks = halide_vulkan_get_allocation_callbacks(user_context);
     int status = vk_create_instance(user_context, requested_layers, instance, alloc_callbacks);
     if (status != halide_error_code_success) {
-        return status;
+        error(user_context) << "Vulkan: Failed to create instance for context!\n";
+        return halide_error_code_generic_error;
     }
 
     if (vkCreateDevice == nullptr) {
@@ -288,18 +293,26 @@ int vk_create_context(void *user_context, VulkanMemoryAllocator **allocator,
 
     status = vk_select_device_for_context(user_context, instance, device, physical_device, queue_family_index);
     if (status != halide_error_code_success) {
-        return status;
+        error(user_context) << "Vulkan: Failed to select device for context!\n";
+        return halide_error_code_generic_error;
     }
 
     status = vk_create_device(user_context, requested_layers, instance, device, queue, physical_device, queue_family_index, alloc_callbacks);
     if (status != halide_error_code_success) {
-        return status;
+        error(user_context) << "Vulkan: Failed to create device for context!\n";
+        return halide_error_code_generic_error;
     }
 
     *allocator = vk_create_memory_allocator(user_context, *device, *physical_device, alloc_callbacks);
     if (*allocator == nullptr) {
         error(user_context) << "Vulkan: Failed to create memory allocator for device!\n";
         return halide_error_code_generic_error;
+    }
+
+    VkResult result = vk_create_command_pool(user_context, *allocator, *queue_family_index, command_pool);
+    if (result != VK_SUCCESS) {
+        error(user_context) << "Vulkan: Failed to create command pool for context! Error: " << vk_get_error_name(result) << "\n";
+        return result;
     }
 
     return halide_error_code_success;

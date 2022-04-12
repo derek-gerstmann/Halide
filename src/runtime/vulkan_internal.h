@@ -46,9 +46,10 @@ int vk_create_context(
     void *user_context,
     VulkanMemoryAllocator **allocator,
     VkInstance *instance,
-    VkDevice *device, VkQueue *queue,
+    VkDevice *device, 
     VkPhysicalDevice *physical_device,
-    uint32_t *queue_family_index);
+    VkCommandPool *command_pool,
+    VkQueue *queue, uint32_t *queue_family_index);
 
 int vk_create_instance(void *user_context, const StringTable &requested_layers, VkInstance *instance, const VkAllocationCallbacks *alloc_callbacks);
 
