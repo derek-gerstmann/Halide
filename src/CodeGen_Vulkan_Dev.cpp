@@ -10,8 +10,7 @@
 #include "IRPrinter.h"
 #include "Scope.h"
 #include "Target.h"
-
-#include "spirv/1.0/spirv.h"
+#include "SPIRV_IR.h"
 
 // Temporary:
 #include <fstream>
@@ -22,6 +21,8 @@ namespace Internal {
 class CodeGen_LLVM;
 
 namespace {  // anonymous
+
+// --
 
 template<typename CodeGenT, typename ValueT>
 ValueT lower_int_uint_div(CodeGenT *cg, Expr a, Expr b);
@@ -111,6 +112,8 @@ protected:
 
         void visit_binop(Type t, const Expr &a, const Expr &b, uint32_t opcode);
 
+        SpvContext context;
+        
         // ID of last generated Expr.
         uint32_t id;
         // IDs are allocated in numerical order of use.
@@ -669,7 +672,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::visit(const Load *op) {
     // TODO: implement vector loads
     // TODO: correct casting to the appropriate memory space
 
-    internal_assert(!(op->index.type().is_vector()));
+//    internal_assert(!(op->index.type().is_vector()));
     internal_assert(op->param.defined() && op->param.is_buffer());
 
     // Construct the pointer to read from
@@ -698,7 +701,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::visit(const Store *op) {
     // TODO: implement vector writes
     // TODO: correct casting to the appropriate memory space
 
-    internal_assert(!(op->index.type().is_vector()));
+//     internal_assert(!(op->index.type().is_vector()));
     internal_assert(op->param.defined() && op->param.is_buffer());
 
     op->value.accept(this);
