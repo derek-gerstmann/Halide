@@ -31,6 +31,7 @@ using SpvInstructionContentsPtr = IntrusivePtr<SpvInstructionContents>;
 using SpvId = uint32_t;
 using SpvBinary = std::vector<uint32_t>;
 
+static constexpr SpvId SpvInvalidId = SpvId(-1);
 static constexpr SpvId SpvNoResult = 0;
 static constexpr SpvId SpvNoType = 0;
 
@@ -39,8 +40,7 @@ static constexpr SpvId SpvNoType = 0;
 class SpvInstruction {
 public:
 
-    SpvInstruction();
-    SpvInstruction(SpvOp op_code, SpvId result_id = SpvNoResult, SpvId type_id = SpvNoType);
+    SpvInstruction() = default;
     ~SpvInstruction() = default;
 
     SpvInstruction(const SpvInstruction &) = default;
@@ -48,7 +48,8 @@ public:
     SpvInstruction(SpvInstruction &&) = default;
     SpvInstruction &operator=(SpvInstruction &&) = default;
 
-
+    void define();
+    void declare(SpvOp op_code, SpvId result_id = SpvNoResult, SpvId type_id = SpvNoType);
     void set_block(SpvBlock block);
     void set_result_id(SpvId id);
     void set_op_code(SpvOp oc);
@@ -61,12 +62,15 @@ public:
 
     bool has_type(void) const;
     bool has_result(void) const;
+    bool is_defined(void) const;
     bool is_immediate(uint32_t index) const;
     uint32_t length() const;
     SpvBlock block() const;
     
     void encode(SpvBinary& binary) const;
     
+    static SpvInstruction make(SpvOp op_code, SpvId result_id = SpvNoResult, SpvId type_id = SpvNoType);
+
 protected:
     SpvInstructionContentsPtr contents;
 };
@@ -75,8 +79,7 @@ protected:
 
 class SpvBlock {
 public:
-    SpvBlock();
-    SpvBlock(SpvFunction func, SpvId id);
+    SpvBlock() = default;
     ~SpvBlock() = default;
 
     SpvBlock(const SpvBlock &) = default;
@@ -90,10 +93,12 @@ public:
     SpvFunction function() const;
     bool is_reachable() const;
     bool is_terminated() const;
-
+    bool is_defined() const;
     SpvId id() const;
 
     void encode(SpvBinary& binary) const;
+
+    static SpvBlock make(SpvFunction func, SpvId id);
 
 protected:
    
@@ -104,8 +109,7 @@ protected:
 
 class SpvFunction {
 public:
-    SpvFunction();
-    SpvFunction(SpvModule module, SpvId func_id, SpvId result_type_id, SpvId func_type_id);
+    SpvFunction() = default;
     ~SpvFunction() = default;
 
     SpvFunction(const SpvFunction &) = default;
@@ -114,13 +118,15 @@ public:
     SpvFunction &operator=(SpvFunction &&) = default;
 
     void add_parameter(SpvInstruction param_ptr);
-
     void set_module(SpvModule m);
+    bool is_defined() const;
     SpvInstruction instruction() const;
     SpvModule module() const;
     SpvId id() const;
 
     void encode(SpvBinary& binary) const;
+
+    static SpvFunction make(SpvModule module, SpvId func_id, SpvId result_type_id, SpvId func_type_id);
 
 protected:
     SpvFunctionContentsPtr contents;
@@ -130,7 +136,7 @@ protected:
 
 class SpvModule {
 public:
-    SpvModule();
+    SpvModule() = default;
     ~SpvModule() = default;
 
     SpvModule(const SpvModule &) = default;
@@ -141,8 +147,12 @@ public:
     SpvFunction add_function(SpvId func_id, SpvId result_type, SpvId func_type, SpvId first_param);
     SpvId map_instruction(SpvInstruction inst);
     SpvInstruction lookup_instruction(SpvId result_id) const;
+    bool is_defined() const;
+    SpvId id() const;
 
     void encode(SpvBinary& binary) const;
+
+    static SpvModule make(SpvId module_id);
 
 protected:
     SpvModuleContentsPtr contents;
@@ -190,77 +200,94 @@ struct SpvModuleContents {
     using Instructions = std::vector<SpvInstruction>;
     using InstructionMap = std::unordered_map<SpvId, SpvInstruction>;
     mutable RefCount ref_count;
+    SpvId module_id = SpvInvalidId;
     Functions functions;
     Instructions instructions;
     InstructionMap instruction_map;
 };
 
-SpvInstruction::SpvInstruction() : contents(new SpvInstructionContents()) {
-
-}
-
-SpvInstruction::SpvInstruction(SpvOp op_code, SpvId result_id, SpvId type_id) 
-    : contents(new SpvInstructionContents()) {
-    contents->op_code = op_code;
-    contents->result_id = result_id;
-    contents->type_id = type_id;
+SpvInstruction SpvInstruction::make(SpvOp op_code, SpvId result_id, SpvId type_id) {
+    SpvInstruction instance;
+    instance.contents = SpvInstructionContentsPtr(new SpvInstructionContents);
+    instance.contents->op_code = op_code;
+    instance.contents->result_id = result_id;
+    instance.contents->type_id = type_id;
+    return instance;
 }  
 
 void SpvInstruction::set_block(SpvBlock block) { 
+    user_assert(is_defined()) << "An SpvInstruction must be defined before modifying its properties\n";
     contents->block = block;
 }
 
 void SpvInstruction::set_result_id(SpvId result_id) { 
+    user_assert(is_defined()) << "An SpvInstruction must be defined before modifying its properties\n";
     contents->result_id = result_id; 
 }
 
 void SpvInstruction::set_op_code(SpvOp op_code) { 
+    user_assert(is_defined()) << "An SpvInstruction must be defined before modifying its properties\n";
     contents->op_code = op_code; 
 }
 
 void SpvInstruction::add_operand(SpvId id) {
+    user_assert(is_defined()) << "An SpvInstruction must be defined before modifying its properties\n";
     contents->operands.push_back(id);
     contents->immediates.push_back(false);
 }
 
 void SpvInstruction::add_immediate(SpvId id) {
+    user_assert(is_defined()) << "An SpvInstruction must be defined before modifying its properties\n";
     contents->operands.push_back(id);
     contents->immediates.push_back(true);
 }
 
 SpvId SpvInstruction::result_id() const { 
+    user_assert(is_defined()) << "An SpvInstruction must be defined before accessing its properties\n";
     return contents->result_id; 
 }
 
 SpvOp SpvInstruction::op_code() const { 
+    user_assert(is_defined()) << "An SpvInstruction must be defined before accessing its properties\n";
     return contents->op_code; 
 }
 
 SpvId SpvInstruction::operand(uint32_t index) { 
+    user_assert(is_defined()) << "An SpvInstruction must be defined before accessing its properties\n";
     return contents->operands[index]; 
 }
 
 bool SpvInstruction::has_type(void) const { 
+    if(!is_defined()) { return false; }
     return contents->type_id != SpvNoType; 
 }
 
 bool SpvInstruction::has_result(void) const { 
+    if(!is_defined()) { return false; }
     return contents->result_id != SpvNoResult; 
 }
 
+bool SpvInstruction::is_defined() const {
+    return contents.defined();
+}
+
 bool SpvInstruction::is_immediate(uint32_t index) const { 
+    user_assert(is_defined()) << "An SpvInstruction must be defined before modifying its properties\n";
     return contents->immediates[index]; 
 }
 
 uint32_t SpvInstruction::length() const { 
+    user_assert(is_defined()) << "An SpvInstruction must be defined before modifying its properties\n";
     return (uint32_t)contents->operands.size(); 
 }
 
 SpvBlock SpvInstruction::block() const { 
+    user_assert(is_defined()) << "An SpvInstruction must be defined before modifying its properties\n";
     return contents->block; 
 }
 
 void SpvInstruction::encode(SpvBinary& binary) const {
+    user_assert(is_defined()) << "An SpvInstruction must be defined before accessing its properties\n";
 
     // Count the number of 32-bit words to represent the instruction
     uint32_t word_count = 1; 
@@ -291,42 +318,48 @@ void destroy<SpvInstructionContents>(const SpvInstructionContents *c) {
 
 // --
 
-SpvBlock::SpvBlock() 
-    : contents( new SpvBlockContents() ) {
-
-}
-
-SpvBlock::SpvBlock(SpvFunction func, SpvId id) 
-    : contents( new SpvBlockContents() ) {
-    
-    contents->parent = func;
-    SpvInstruction inst(SpvOpLabel, id); // add a label for this block
-    add_instruction(inst);
+SpvBlock SpvBlock::make(SpvFunction func, SpvId block_id) {
+    SpvBlock instance;
+    instance.contents = SpvBlockContentsPtr( new SpvBlockContents() );
+    instance.contents->parent = func;
+    SpvInstruction inst = SpvInstruction::make(SpvOpLabel, block_id); // add a label for this block
+    instance.add_instruction(inst);
+    return instance;
 }
 
 void SpvBlock::add_instruction(SpvInstruction inst) {
+    user_assert(is_defined()) << "An SpvBlock must be defined before modifying its properties\n";
     inst.set_block(*this);
     contents->instructions.push_back(inst);        
 }
 
 void SpvBlock::add_variable(SpvInstruction var) {
+    user_assert(is_defined()) << "An SpvBlock must be defined before modifying its properties\n";
     var.set_block(*this);
     contents->instructions.push_back(var);        
 }
 
 void SpvBlock::set_function(SpvFunction func) { 
+    user_assert(is_defined()) << "An SpvBlock must be defined before modifying its properties\n";
     contents->parent = func; 
 }
 
 SpvFunction SpvBlock::function() const { 
+    user_assert(is_defined()) << "An SpvBlock must be defined before accessing its properties\n";
     return contents->parent; 
 }
 
 bool SpvBlock::is_reachable() const { 
+    user_assert(is_defined()) << "An SpvBlock must be defined before accessing its properties\n";
     return contents->reachable; 
 }
 
+bool SpvBlock::is_defined() const { 
+    return contents.defined();
+}
+
 bool SpvBlock::is_terminated() const {
+    user_assert(is_defined()) << "An SpvBlock must be defined before accessing its properties\n";
     switch(contents->instructions.back().op_code()) {
         case SpvOpBranch:
         case SpvOpBranchConditional:
@@ -342,10 +375,12 @@ bool SpvBlock::is_terminated() const {
 }
 
 SpvId SpvBlock::id() const { 
+    user_assert(is_defined()) << "An SpvBlock must be defined before accessing its properties\n";
     return contents->instructions.front().result_id(); 
 }
 
 void SpvBlock::encode(SpvBinary& binary) const {
+    user_assert(is_defined()) << "An SpvBlock must be defined before accessing its properties\n";
     contents->instructions.front().encode(binary);
     for(const SpvInstruction& var : contents->variables) {
         var.encode(binary);
@@ -369,39 +404,47 @@ void destroy<SpvBlockContents>(const SpvBlockContents *c) {
 
 // --
 
-SpvFunction::SpvFunction() 
-    : contents( new SpvFunctionContents() ) { }
+SpvFunction SpvFunction::make(SpvModule module, SpvId func_id, SpvId result_type_id, SpvId func_type_id) {
+    SpvFunction instance;
+    instance.contents = SpvFunctionContentsPtr( new SpvFunctionContents() );
+    instance.contents->parent = module;    
+    instance.contents->instruction = SpvInstruction::make(SpvOpFunction, func_id, result_type_id);
+    instance.contents->instruction.add_immediate(SpvFunctionControlMaskNone);
+    instance.contents->instruction.add_operand(func_type_id);
+    return instance;
+}
 
-SpvFunction::SpvFunction(SpvModule module, SpvId func_id, SpvId result_type_id, SpvId func_type_id)
-    : contents( new SpvFunctionContents() ) {
-
-    contents->parent = module;    
-    contents->instruction = SpvInstruction(SpvOpFunction, func_id, result_type_id);
-    contents->instruction.add_immediate(SpvFunctionControlMaskNone);
-    contents->instruction.add_operand(func_type_id);
+bool SpvFunction::is_defined() const { 
+    return contents.defined();
 }
 
 void SpvFunction::add_parameter(SpvInstruction param) {
+    user_assert(is_defined()) << "An SpvFunction must be defined before accessing its properties\n";
     contents->parameters.push_back(param);        
 }
 
 void SpvFunction::set_module(SpvModule module) { 
+    user_assert(is_defined()) << "An SpvFunction must be defined before accessing its properties\n";
     contents->parent = module; 
 }
 
 SpvInstruction SpvFunction::instruction() const {
+    user_assert(is_defined()) << "An SpvFunction must be defined before accessing its properties\n";
     return contents->instruction;
 }
 
 SpvModule SpvFunction::module() const { 
+    user_assert(is_defined()) << "An SpvFunction must be defined before accessing its properties\n";
     return contents->parent; 
 }
 
 SpvId SpvFunction::id() const { 
+    user_assert(is_defined()) << "An SpvFunction must be defined before accessing its properties\n";
     return contents->instruction.result_id(); 
 }
 
 void SpvFunction::encode(SpvBinary& binary) const {
+    user_assert(is_defined()) << "An SpvFunction must be defined before accessing its properties\n";
     contents->instruction.encode(binary);
     for(const SpvInstruction& param : contents->parameters) {
         param.encode(binary);
@@ -422,13 +465,19 @@ void destroy<SpvFunctionContents>(const SpvFunctionContents *c) {
 
 // --
 
-SpvModule::SpvModule() 
-    : contents( new SpvModuleContents() ) {
+SpvModule SpvModule::make(SpvId module_id) {
+    SpvModule instance;
+    instance.contents = SpvModuleContentsPtr( new SpvModuleContents() );
+    instance.contents->module_id = module_id;
+    return instance;
+}
 
+bool SpvModule::is_defined() const { 
+    return contents.defined();
 }
 
 SpvFunction SpvModule::add_function(SpvId func_id, SpvId result_type_id, SpvId func_type_id, SpvId first_param) {
-    SpvFunction func(*this, func_id, result_type_id, func_type_id);
+    SpvFunction func = SpvFunction::make(*this, func_id, result_type_id, func_type_id);
     contents->functions.emplace_back(func);        
     map_instruction(func.instruction());
 
@@ -436,7 +485,7 @@ SpvFunction SpvModule::add_function(SpvId func_id, SpvId result_type_id, SpvId f
     if((inst.op_code() != SpvOpNop) && inst.length()) {
         uint32_t param_count = inst.length() - 1;
         for(uint32_t p = 0; p < param_count; ++p) {
-            SpvInstruction param(
+            SpvInstruction param = SpvInstruction::make(
                 SpvOpFunctionParameter, 
                 first_param + p, 
                 inst.operand(p + 1)
@@ -467,6 +516,11 @@ SpvInstruction SpvModule::lookup_instruction(SpvId result_id) const {
     return it->second;
 }
 
+SpvId SpvModule::id() const { 
+    user_assert(is_defined()) << "An SpvModule must be defined before accessing its properties\n";
+    return contents->module_id; 
+}
+
 void SpvModule::encode(SpvBinary& binary) const {
     for(const SpvFunction& func : contents->functions) {
         func.encode(binary);
@@ -487,11 +541,23 @@ void destroy<SpvModuleContents>(const SpvModuleContents *c) {
 
 // --
 
+struct SpvHeader {
+    SpvSourceLanguage source_language = SpvSourceLanguageUnknown;
+    SpvAddressingModel addressing_model = SpvAddressingModelLogical;
+    SpvMemoryModel memory_model = SpvMemoryModelSimple;
+};
+
+// --
+
 class SpvContext {
 public:
 
-    SpvContext(SpvSourceLanguage src_lang, SpvAddressingModel addr_model, SpvMemoryModel mem_model);
+    SpvContext() = default;
+    SpvContext(const SpvHeader& header);
     ~SpvContext() = default;
+
+    SpvContext(const SpvContext &) = delete;
+    SpvContext &operator=(const SpvContext &) = delete;
 
     SpvInstruction create_instruction();
 
@@ -507,6 +573,8 @@ public:
     SpvId create_array_type(SpvId element, SpvId size, int stride);
     SpvId create_string_type(const char* str);
 
+    void set_header(const SpvHeader& header);
+
     void require(SpvCapability);
     bool is_required(SpvCapability) const;
 
@@ -517,10 +585,7 @@ protected:
     using Instructions = std::vector<SpvInstruction>;
 
     SpvId id_counter = 0;
-    SpvSourceLanguage source_language = SpvSourceLanguageUnknown;
-    SpvAddressingModel addressing_model = SpvAddressingModelLogical;
-    SpvMemoryModel memory_model = SpvMemoryModelSimple;
-
+    SpvHeader header;
     SpvModule module;
     SpvFunction entry_point;    
 
@@ -533,13 +598,16 @@ protected:
     StringMap string_map;
 };
 
-SpvContext::SpvContext(SpvSourceLanguage src_lang, SpvAddressingModel addr_model, SpvMemoryModel mem_model)
-    : source_language(src_lang), addressing_model(addr_model), memory_model(mem_model) {
-
+SpvContext::SpvContext(const SpvHeader& hdr)
+    : header(hdr) {
 }
     
 SpvId SpvContext::create_id() {
     return ++id_counter;
+}
+
+void SpvContext::set_header(const SpvHeader& hdr) {
+    header = hdr;
 }
 
 void SpvContext::require(SpvCapability capability) {
