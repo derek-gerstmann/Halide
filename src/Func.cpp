@@ -188,7 +188,18 @@ void Func::define_extern(const std::string &function_name,
 }
 
 /** Get the types of the buffers returned by an extern definition. */
+const Type &Func::output_type() const {
+    user_assert(defined())
+        << "Can't access output buffer of undefined Func.\n";
+    user_assert(func.output_types().size() == 1)
+        << "Can't call Func::output_type on Func \"" << name()
+        << "\" because it returns a Tuple.\n";
+    return func.output_types()[0];
+}
+
 const std::vector<Type> &Func::output_types() const {
+    user_assert(defined())
+        << "Can't access output buffer of undefined Func.\n";
     return func.output_types();
 }
 
@@ -3157,7 +3168,7 @@ void Func::infer_input_bounds(JITUserContext *context,
         Buffer<> im(func.output_types()[i], nullptr, sizes);
         outputs[i] = std::move(im);
     }
-    Realization r(outputs);
+    Realization r(std::move(outputs));
     infer_input_bounds(context, r, target, param_map);
 }
 
@@ -3308,33 +3319,6 @@ void set_handler(A &a, B b) {
     a = (A)b;
 }
 }  // namespace
-
-// Deprecated setters for JIT handlers
-void Func::set_error_handler(void (*handler)(void *, const char *)) {
-    set_handler(jit_handlers().custom_error, handler);
-}
-
-void Func::set_custom_allocator(void *(*cust_malloc)(void *, size_t),
-                                void (*cust_free)(void *, void *)) {
-    set_handler(jit_handlers().custom_malloc, cust_malloc);
-    set_handler(jit_handlers().custom_free, cust_free);
-}
-
-void Func::set_custom_do_par_for(int (*cust_do_par_for)(void *, int (*)(void *, int, uint8_t *), int, int, uint8_t *)) {
-    set_handler(jit_handlers().custom_do_par_for, cust_do_par_for);
-}
-
-void Func::set_custom_do_task(int (*cust_do_task)(void *, int (*)(void *, int, uint8_t *), int, uint8_t *)) {
-    set_handler(jit_handlers().custom_do_task, cust_do_task);
-}
-
-void Func::set_custom_trace(int (*trace_fn)(void *, const halide_trace_event_t *)) {
-    set_handler(jit_handlers().custom_trace, trace_fn);
-}
-
-void Func::set_custom_print(void (*cust_print)(void *, const char *)) {
-    set_handler(jit_handlers().custom_print, cust_print);
-}
 
 void Func::add_custom_lowering_pass(IRMutator *pass, std::function<void()> deleter) {
     pipeline().add_custom_lowering_pass(pass, std::move(deleter));

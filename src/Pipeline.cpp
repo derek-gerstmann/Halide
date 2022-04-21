@@ -640,43 +640,6 @@ void Pipeline::compile_jit(const Target &target_arg) {
     contents->jit_module = jit_module;
 }
 
-template<typename A, typename B>
-void set_handler(A &a, B b) {
-    a = (A)b;
-}
-
-void Pipeline::set_error_handler(void (*handler)(void *, const char *)) {
-    user_assert(defined()) << "Pipeline is undefined\n";
-    set_handler(contents->jit_handlers.custom_error, handler);
-}
-
-void Pipeline::set_custom_allocator(void *(*cust_malloc)(void *, size_t),
-                                    void (*cust_free)(void *, void *)) {
-    user_assert(defined()) << "Pipeline is undefined\n";
-    set_handler(contents->jit_handlers.custom_malloc, cust_malloc);
-    set_handler(contents->jit_handlers.custom_free, cust_free);
-}
-
-void Pipeline::set_custom_do_par_for(int (*cust_do_par_for)(void *, int (*)(void *, int, uint8_t *), int, int, uint8_t *)) {
-    user_assert(defined()) << "Pipeline is undefined\n";
-    set_handler(contents->jit_handlers.custom_do_par_for, cust_do_par_for);
-}
-
-void Pipeline::set_custom_do_task(int (*cust_do_task)(void *, int (*)(void *, int, uint8_t *), int, uint8_t *)) {
-    user_assert(defined()) << "Pipeline is undefined\n";
-    set_handler(contents->jit_handlers.custom_do_task, cust_do_task);
-}
-
-void Pipeline::set_custom_trace(int (*trace_fn)(void *, const halide_trace_event_t *)) {
-    user_assert(defined()) << "Pipeline is undefined\n";
-    set_handler(contents->jit_handlers.custom_trace, trace_fn);
-}
-
-void Pipeline::set_custom_print(void (*cust_print)(void *, const char *)) {
-    user_assert(defined()) << "Pipeline is undefined\n";
-    set_handler(contents->jit_handlers.custom_print, cust_print);
-}
-
 void Pipeline::set_jit_externs(const std::map<std::string, JITExtern> &externs) {
     user_assert(defined()) << "Pipeline is undefined\n";
     contents->jit_externs = externs;
@@ -729,7 +692,7 @@ Realization Pipeline::realize(JITUserContext *context,
             bufs.emplace_back(t, nullptr, sizes);
         }
     }
-    Realization r(bufs);
+    Realization r(std::move(bufs));
     // Do an output bounds query if we can. Otherwise just assume the
     // output size is good.
     if (!target.has_feature(Target::NoBoundsQuery)) {
@@ -1161,7 +1124,7 @@ void Pipeline::realize(JITUserContext *context,
     debug(2) << "Back from jitted function. Exit status was " << exit_status << "\n";
 
     // If we're profiling, report runtimes and reset profiler stats.
-    if (target.has_feature(Target::Profile)) {
+    if (target.has_feature(Target::Profile) || target.has_feature(Target::ProfileByTimer)) {
         JITModule::Symbol report_sym =
             contents->jit_module.find_symbol_by_name("halide_profiler_report");
         JITModule::Symbol reset_sym =
@@ -1308,7 +1271,7 @@ void Pipeline::infer_input_bounds(JITUserContext *context,
     for (Type t : contents->outputs[0].output_types()) {
         bufs.emplace_back(t, sizes);
     }
-    Realization r(bufs);
+    Realization r(std::move(bufs));
     infer_input_bounds(context, r, target, param_map);
 }
 
