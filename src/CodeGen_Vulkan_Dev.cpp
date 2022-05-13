@@ -112,7 +112,7 @@ protected:
 
         void visit_binop(Type t, const Expr &a, const Expr &b, uint32_t opcode);
 
-        SpvContext context;
+        SpvBuilder builder;
         
         // ID of last generated Expr.
         uint32_t id;
@@ -152,7 +152,7 @@ protected:
         std::map<std::pair<Type, uint32_t>, uint32_t> pointer_type_map;
         std::map<Type, uint32_t> pair_type_map;
         std::map<std::string, uint32_t> constant_map;
-
+/*
         void add_instruction(std::vector<uint32_t> &region, uint32_t opcode,
                              std::initializer_list<uint32_t> words);
         void add_instruction(uint32_t opcode, std::initializer_list<uint32_t> words);
@@ -163,6 +163,7 @@ protected:
         uint32_t map_pointer_type(const Type &type, uint32_t storage_class);
         uint32_t map_type_to_pair(const Type &t);
         uint32_t emit_constant(const Type &t, const void *data);
+  */
         void scalarize(const Expr &e);
 
         // The scope contains both the symbol and its storage class
@@ -184,6 +185,7 @@ protected:
 
 // --
 
+/*
 void CodeGen_Vulkan_Dev::SPIRVEmitter::add_instruction(std::vector<uint32_t> &region, uint32_t opcode,
                                                        std::initializer_list<uint32_t> words) {
     region.push_back(((1 + words.size()) << 16) | opcode);
@@ -242,9 +244,30 @@ uint32_t CodeGen_Vulkan_Dev::SPIRVEmitter::emit_constant(const Type &t, const vo
         return item->second;
     }
 }
+*/
 
 void CodeGen_Vulkan_Dev::SPIRVEmitter::scalarize(const Expr &e) {
     internal_assert(e.type().is_vector()) << "CodeGen_Vulkan_Dev::SPIRVEmitter::scalarize must be called with an expression of vector type.\n";
+
+    SpvId vector_id = context.current_id();
+    SpvId type_id = context.map_type(e.type);
+    SpvId value_id = context.map_null_constant(e.type);
+    SpvId result_id = value_id;
+    for (int i = 0; i < e.type().lanes(); i++) {
+        extract_lane(e, i).accept(this);
+        SpvId composite_id = context.make_id();
+        SpvInstruction inst = SpvInstruction::make(SpvOpVectorInsertDynamic);
+        inst.set_type_id(SpvOpTypeVector);
+        inst.set_result_id(composite_id);
+        inst.add_operand(vector_id);
+        inst.add_operand(value_id);
+        inst.add_immediate(i);
+        context.current_module().add_instruction(inst);
+        result_id = composite_id;
+    }
+    context.set_current_id(result_id);
+
+/*
     uint32_t type_id = map_type(e.type());
 
     uint32_t result_id = next_id++;
@@ -257,6 +280,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::scalarize(const Expr &e) {
         result_id = composite_vec;
     }
     id = result_id;
+*/
 }
 
 uint32_t CodeGen_Vulkan_Dev::SPIRVEmitter::map_type(const Type &t) {
@@ -1250,6 +1274,15 @@ void CodeGen_Vulkan_Dev::init_module() {
 void CodeGen_Vulkan_Dev::add_kernel(Stmt stmt,
                                     const std::string &name,
                                     const std::vector<DeviceArgument> &args) {
+
+    debug(2) << "CodeGen_Vulkan_Dev::compile " << name << "\n";
+
+    // We need to scalarize/de-predicate any loads/stores, since Vulkan does not support predication.
+    s = scalarize_predicated_loads_stores(s);
+
+    debug(2) << "CodeGen_Vulkan_Dev: after removing predication: \n"
+             << s;
+
     current_kernel_name = name;
     emitter.add_kernel(stmt, name, args);
     //dump();
