@@ -159,11 +159,11 @@ protected:
         void add_instruction(std::vector<uint32_t> &region, uint32_t opcode,
                              std::vector<uint32_t> words);
         void add_instruction(uint32_t opcode, std::vector<uint32_t> words);
-        uint32_t map_type(const Type &type);
         uint32_t map_pointer_type(const Type &type, uint32_t storage_class);
         uint32_t map_type_to_pair(const Type &t);
-        uint32_t emit_constant(const Type &t, const void *data);
   */
+        uint32_t map_type(const Type &type, uint32_t array_size = 1);
+        uint32_t emit_constant(const Type &type, const void *data);
         void scalarize(const Expr &e);
 
         // The scope contains both the symbol and its storage class
@@ -246,6 +246,10 @@ uint32_t CodeGen_Vulkan_Dev::SPIRVEmitter::emit_constant(const Type &t, const vo
 }
 */
 
+uint32_t CodeGen_Vulkan_Dev::SPIRVEmitter::emit_constant(const Type &type, const void *data) {
+    return context.map_constant(type, data);
+}
+
 void CodeGen_Vulkan_Dev::SPIRVEmitter::scalarize(const Expr &e) {
     internal_assert(e.type().is_vector()) << "CodeGen_Vulkan_Dev::SPIRVEmitter::scalarize must be called with an expression of vector type.\n";
 
@@ -283,39 +287,8 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::scalarize(const Expr &e) {
 */
 }
 
-uint32_t CodeGen_Vulkan_Dev::SPIRVEmitter::map_type(const Type &t) {
-    auto key_typecode = t.code();
-
-    Type t_key(key_typecode, t.bits(), t.lanes());
-
-    auto item = type_map.find(t_key);
-    if (item == type_map.end()) {
-        // TODO, handle arrays, pointers, halide_buffer_t
-        uint32_t type_id = 0;
-        if (t.lanes() != 1) {
-            uint32_t base_id = map_type(t.with_lanes(1));
-            type_id = next_id++;
-            add_instruction(spir_v_types, SpvOpTypeVector, {type_id, base_id, (uint32_t)t.lanes()});
-        } else {
-            if (t.is_float()) {
-                type_id = next_id++;
-                add_instruction(spir_v_types, SpvOpTypeFloat, {type_id, (uint32_t)t.bits()});
-            } else if (t.is_bool()) {
-                type_id = next_id++;
-                add_instruction(spir_v_types, SpvOpTypeBool, {type_id});
-            } else if (t.is_int_or_uint()) {
-                type_id = next_id++;
-                uint32_t signedness = t.is_uint() ? 0 : 1;
-                add_instruction(spir_v_types, SpvOpTypeInt, {type_id, (uint32_t)t.bits(), signedness});
-            } else {
-                internal_error << "Unsupported type in Vulkan backend " << t << "\n";
-            }
-        }
-        type_map[t_key] = type_id;
-        return type_id;
-    } else {
-        return item->second;
-    }
+uint32_t CodeGen_Vulkan_Dev::SPIRVEmitter::map_type(const Type &type, uint32_t array_size) {
+    return context.map_type(type, array_size);
 }
 
 uint32_t CodeGen_Vulkan_Dev::SPIRVEmitter::map_type_to_pair(const Type &t) {
@@ -424,11 +397,23 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::visit(const Cast *op) {
         internal_error << "Vulkan cast unhandled case " << op->value.type() << " to " << op->type << "\n";
     }
 
+/*
     uint32_t type_id = map_type(op->type);
     op->value.accept(this);
     uint32_t src_id = id;
     id = next_id++;
     add_instruction(opcode, {type_id, id, src_id});
+*/
+
+    SpvId type_id = context.map_type(op-type);
+    op->value.accept(this);
+    SpvId src_id = id;
+    id = context.make_id();
+    SpvInstruction inst = SpvInstruction::make(opcode);
+    inst.set_type_id(type_id);
+    inst.set_result_id(id);
+    inst.add_operand(src_id);
+    context.current_module().add_instruction(inst);
 }
 
 void CodeGen_Vulkan_Dev::SPIRVEmitter::visit(const Add *op) {
@@ -557,11 +542,24 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::visit(const Or *op) {
 }
 
 void CodeGen_Vulkan_Dev::SPIRVEmitter::visit(const Not *op) {
+/*
     uint32_t type_id = map_type(op->type);
     op->a.accept(this);
     uint32_t a_id = id;
     id = next_id++;
     add_instruction(SpvOpLogicalNot, {type_id, id, a_id});
+*/
+    SpvId type_id = context.map_type(op-type);
+    op->value.accept(this);
+    SpvId src_id = id;
+    id = context.make_id();
+
+    SpvInstruction inst = SpvInstruction::make(SpvOpLogicalNot);
+    inst.set_type_id(type_id);
+    inst.set_result_id(id);
+    inst.add_operand(src_id);
+    context.current_module().add_instruction(inst);
+
 }
 
 void CodeGen_Vulkan_Dev::SPIRVEmitter::visit(const Call *op) {
@@ -696,7 +694,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::visit(const Load *op) {
     // TODO: implement vector loads
     // TODO: correct casting to the appropriate memory space
 
-//    internal_assert(!(op->index.type().is_vector()));
+    internal_assert(!(op->index.type().is_vector()));
     internal_assert(op->param.defined() && op->param.is_buffer());
 
     // Construct the pointer to read from
@@ -724,8 +722,7 @@ void CodeGen_Vulkan_Dev::SPIRVEmitter::visit(const Store *op) {
 
     // TODO: implement vector writes
     // TODO: correct casting to the appropriate memory space
-
-//     internal_assert(!(op->index.type().is_vector()));
+    internal_assert(!(op->index.type().is_vector()));
     internal_assert(op->param.defined() && op->param.is_buffer());
 
     op->value.accept(this);
